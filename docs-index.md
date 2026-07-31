@@ -79,6 +79,8 @@ related_docs:
 | [[design-permission-sandbox-011]] | 权限与安全模型技术设计 | design | `design/analysis/claude/11-权限与安全模型设计.md` | permissions, security, sandbox, bash-validation, trust, rbac |
 | [[design-session-memory-012]] | 会话与记忆管理技术设计 | design | `design/analysis/claude/12-会话与记忆管理设计.md` | session, memory, compact, persistence, jsonl |
 | [[design-plugin-protocol-013]] | 插件与协议扩展技术设计 | design | `design/analysis/claude/13-插件与协议扩展设计.md` | plugins, mcp, adapter, oauth, hooks, lifecycle |
+| [[design-agent-tiered-memory-001]] | 分层记忆注入设计（冻结快照 + 情景检索，移植 hermes-agent） | design | `design/architecture/agent_components/tiered-memory-injection-design.md` | agent-engine, memory, prompt-cache, token-optimization, episodic, hermes-port |
+| [[design-agent-interop-protocols-001]] | Agent 互操作协议对比：A2A vs ACP vs MCP（Legion 落地成本） | design | `design/architecture/agent_components/agent-interop-protocols-comparison.md` | agent-interop, a2a, acp, mcp, protocol, decision |
 | [[index-analysis-000]] | Claw Code 分析文档索引 | reference | `design/analysis/claude/index.md` | index, analysis, claw-code |
 | [[analysis-deepseek-tui-overview-001]] | DeepSeek-TUI 项目总览 | analysis | `design/analysis/deepseek-tui/01-overview.md` | deepseek-tui, architecture, rust, tui, overview |
 | [[analysis-deepseek-tui-crates-002]] | DeepSeek-TUI Crate 职责分析 | analysis | `design/analysis/deepseek-tui/02-crate-analysis.md` | deepseek-tui, rust, crates, architecture, modules |
@@ -235,6 +237,7 @@ related_docs:
 | [[deepthinking-security-006]] | 安全治理体系深度设计 | deepthinking | `design/deepthinking/06-security-governance.md` | security, governance, observability, risk-control, deep-design |
 | [[deepthinking-integration-007]] | 系统集成架构深度设计 | deepthinking | `design/deepthinking/07-architecture-integration.md` | integration, architecture, event-driven, microservices, deep-design |
 | [[deepthinking-three-principles-008]] | 三原则贯穿全系统 — 企业级 Agent 治理深度设计 | deepthinking | `design/deepthinking/08-three-principles-throughout.md` | three-principles, observability, governability, risk-control, enterprise, governance |
+| [[deepthinking-interop-009]] | Agent 互操作协议实现现状深度分析：A2A / ACP / MCP | deepthinking | `design/deepthinking/09-agent-interop-protocols-status.md` | agent-interop, a2a, acp, mcp, protocol, status, deep-design |
 | [[deepthinking-index]] | Legion 深度设计思考索引 | deepthinking | `design/deepthinking/index.md` | legion, deep-thinking, architecture, design, index |
 | [[reference-docs-index-001]] | 文档索引 | reference | `docs-index.md` | index, docs, navigation |
 | [[reference-worklog-20260624-001]] | 2026-06-24 工作日志 — legionAgentGUI Wails 桌面应用实现 | reference | `memory/2026-06-24-remaining-work-items.md` | worklog, wails, gui, legion-agent, react, tailwind |
@@ -248,7 +251,7 @@ related_docs:
 | [[plans-maas-c70-inference-port-001]] | C70 MaasInferenceClient 专项计划 | plan | `plans/02-maas/c70-inference-port-plan.md` | plan, maas, c70, inference-port |
 | [[plans-maas-implementation-001]] | MaaS 模型调度层实施计划 | plan | `plans/02-maas/implementation-plan.md` | plan, maas, routing, billing, observability |
 | [[plans-maas-index-000]] | MaaS 模型调度层计划索引 | index | `plans/02-maas/index.md` | plan, maas, model-routing |
-| [[plans-agent-wails-gui-design-001]] | Agent GUI 设计文档 — Wails Desktop Application | design | `plans/03-agent/2026-06-24-wails-gui-design.md` | plan, agent, gui, wails, react, desktop |
+| [[plans-agent-wails-gui-design-001]] | Agent GUI 设计文档 — Wails Desktop Application | design | `plans/03-agent/2026-06-24-wails-gui-design.md` | design, agent, gui, wails, react, desktop, tailwind |
 | [[plans-agent-wails-gui-impl-001]] | Agent GUI 实现计划 — Wails Desktop Application | implementation-plan | `plans/03-agent/2026-06-24-wails-gui-plan.md` | plan, agent, gui, wails, react, desktop |
 | [[plans-agent-cli-tui-001]] | Agent CLI 与终端 UI 计划 | plan | `plans/03-agent/cli-tui-plan.md` | plan, agent, cli, tui, bubble-tea |
 | [[plans-agent-component-implementation-roadmap-001]] | Agent 组件实施路线图 | plan | `plans/03-agent/component-implementation-roadmap.md` | plan, agent, component-roadmap, a-components |
@@ -376,6 +379,7 @@ related_docs:
 - [[deepthinking-evolution-003]] — 进化学习系统深度设计
 - [[deepthinking-index]] — Legion 深度设计思考索引
 - [[deepthinking-integration-007]] — 系统集成架构深度设计
+- [[deepthinking-interop-009]] — Agent 互操作协议实现现状深度分析：A2A / ACP / MCP
 - [[deepthinking-maas-001]] — MaaS 模型调度层深度设计
 - [[deepthinking-security-006]] — 安全治理体系深度设计
 - [[deepthinking-three-principles-008]] — 三原则贯穿全系统 — 企业级 Agent 治理深度设计
@@ -384,6 +388,8 @@ related_docs:
 ### design
 
 - [[design-agent-runtime-009]] — Agent 运行时引擎技术设计
+- [[design-agent-tiered-memory-001]] — 分层记忆注入设计（冻结快照 + 情景检索，移植 hermes-agent）
+- [[design-agent-interop-protocols-001]] — Agent 互操作协议对比：A2A vs ACP vs MCP（Legion 落地成本）
 - [[design-llm-infra-abstraction-001]] — LLM 底层基础设施抽象化设计
 - [[design-maas-001]] — MaaS 模型调度层设计分析
 - [[design-maas-scheduling-008]] — MaaS 模型调度层技术设计

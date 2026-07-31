@@ -74,3 +74,7 @@ type EpisodicMemoryStore interface {
 - 检索结果必须包含 `source_episode_id`，注入上下文可追溯。
 
 <!-- @end-section -->
+
+## 相关文档
+
+- [[design-agent-tiered-memory-001|分层记忆注入设计]] — 扩展本组件的落地设计（Lane B episodic 检索 + 落盘 + hermes 注入策略移植）
