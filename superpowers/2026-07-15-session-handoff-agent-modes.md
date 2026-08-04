@@ -9,9 +9,15 @@ status: active
 
 > 上个会话上下文已满。本文件是**从零接续**的全部上下文：现状、下一步、决策、环境坑、命令。
 
-## 0. 一句话现状
+## 0. 一句话现状（2026-07-18 更新）
 
-Phase 1（Agent 选择器）已上线；Phase 2（工作模式 Manual/Plan/Auto + 工作目录 + 真并发）的 **spec 已定稿**、**Milestone 1a（并发基础）已实现并合入 master 且 `-race` 验证通过**。**下一步 = 写 Milestone 1b 的实现计划并执行。**
+Phase 1（Agent 选择器）已上线；Phase 2 **spec 定稿**；**M1a** 合入 master `3bd5127`；**M1b（可挂起/可恢复工具循环 + 会话目录持久化 + 重启恢复）** 合入 master（merge `4f5abd0`，PR #1）；**M2a（会话模式 manual/plan/auto 流转 + 工具 Sensitive 位 + Plan 模式只读子集 + OKF 产出）** 合入 master（merge `e644b20`，PR #2，7 提交 `663cbe6..5653000`，opus final review MERGE READY）。M2 拆为 M2a/M2b/M2c。**下一步 = 写 Milestone 2b plan（Manual 审批 gate，实现 M1b 留的 `ToolGate` seam）并执行。**
+
+🔴 **M2b 硬前置（安全）**：M1b Checkpoint 不存 `Mode`，`RecoverSuspended` 重建任务丢 Mode → M2b 接 gate 后，Manual 任务挂起→重启→resume 当 Auto 跑→敏感工具免审批执行。M2b 必须先给 Checkpoint 加 Mode + checkSuspend 存 + RecoverSuspended 恢复 + 测试，再让 gate 挂起。
+M2a 已备好 M2b 要用的：`Descriptor.Sensitive`/`Registry.SafeToolNames()`、`domain.Task.Mode`（HTTP 已从 session 解析）、`dispatchToolCall` 已线程 `tools` 参数。
+
+M1b 交付：新包 `internal/sessionstate`（`ResolveWorkspaceRoot`/`SessionDir`/`Checkpoint`/`Store`，`task-state.json` 原子写 + fail-loud load）；`runtime.ErrSuspended` + `ToolGate interface{ShouldSuspend(ctx,task,calls)(bool,error)}` + `Config.Checkpoints/ToolGate`；`RunTask` = entry(自动恢复)→`runToolLoop`(round 边界 gate 挂起写检查点 + `ErrSuspended`)→`finishRun`(完成删检查点)；`Coordinator`：`ErrSuspended`→`TaskSuspended` + `RecoverSuspended` 重启恢复；serve 装配注入 store + 启动恢复。gate/store=nil 时 Auto 行为不变。SDD 产物在 `legionAgent/.superpowers/sdd/`。
+**M2 必看的 M1b 遗留**：① checkpoint 按 session 单文件——M2 落真实 gate 后须保证「每会话至多一个可挂起任务」或改按 task 键；② `RecoverSuspended` 对一次性任务用 `SessionID=cp.SessionKey(=TaskID)` 重建，会话级查找勿误关联；③ 另开清理任务：全文件 `_ = publishLearning` 吞错、死代码 `func max`/`errStaticResolver`。
 
 ## 1. 三个独立 git 仓库（关键拓扑）
 
@@ -45,15 +51,20 @@ Phase 1（Agent 选择器）已上线；Phase 2（工作模式 Manual/Plan/Auto 
 
 ## 3. 下一步（从这里接续）
 
-**写 Milestone 1b 的实现计划**（用 superpowers:writing-plans），然后 subagent-driven 执行。
+**写 Milestone 2b 的实现计划**（用 superpowers:writing-plans），然后 subagent-driven 执行。M1b + M2a 已合入（见 §0）。M2 拆为 M2a（模式流转+Plan，已完成）/ M2b（Manual 审批 gate）/ M2c（SSE）。
 
-**Milestone 1b = 可挂起/可恢复工具循环 + 会话目录持久化 + 重启恢复**（spec §4.1b/§4.0/§4.3）：
-- 把 `internal/runtime/runtime.go` 的 `RunTask` 工具循环（约 144-222 行，累积 `toolCtx []toolEntry`/round/token 的同步线性循环）改成**可检查点**：中间态序列化写会话目录 `task-state.json`。
-- 遇 Manual 审批（M2 才接完整）时：写检查点 → 任务转 `TaskSuspended`（`domain` 已有；转移表 `internal/task/scheduler.go:108` 已允许 `Running↔Suspended`）→ goroutine 返回释放。
-- 决定到达（含 serve 重启后）→ 转 `Running` → 从 `task-state.json` 恢复接着跑。
-- **会话目录 resolver**（单一函数）：session 有 working_dir → `<working_dir>/.stardust/session/<id>/`，否则 `<workspace.root>/session/<id>/`；`workspace.root` 默认 `<home>/.stardust`，配错/不存在回退默认 + warn，`~` 展开。
+**Milestone 2b = Manual 审批 gate**（spec §4.3），核心是**实现 M2a 已备好前提的 `runtime.ToolGate` seam**（M2a 已有 `Descriptor.Sensitive`/`SafeToolNames`/`task.Mode`/`dispatchToolCall` 线程 tools）：
+- ⚠️ **先做 M2b 硬前置（见 §0 红字）**：Checkpoint 加 `Mode` + checkSuspend 存 + RecoverSuspended 恢复 + 测试，**再**让 gate 挂起（否则跨重启静默降级为 Auto 免审批）。
+以下为 M2b/M2c 原始设计（Plan 部分已随 M2a 落地）：
+- session 加 `mode`（manual|plan|auto，默认 auto）→ 解析进 `domain.Task.Mode`；工具注册项加 `Sensitive` 位（read/search/list 安全，ledger 写/send_message/fetch_url/delegate_task 敏感）。
+- **实现 `ToolGate`**：`ShouldSuspend` = `task.Mode==manual && tool.Sensitive && 无已决定` → 开审批票据 → 返 true（M1b 的 `runToolLoop` 会写检查点 + `ErrSuspended` + 挂起）。gate 逻辑接在 `runtime.dispatchToolCall`（`lazytools.go`，唯一 choke，覆盖 lazy+eager）。
+- `internal/approval` 改**会话目录 JSON 持久化**（`approvals/<ticketID>.json`）+ `Decide` 触发任务 `Suspended→Running`（M1b 转移表已允许，`RecoverSuspended` 已能重启加载）；超时（默认 300s）→ deny。
+- 接活 `/v1/events` **真 SSE**（现注册但 serve 没接 `PlatformEvents`、恒 503，latent bug）+ 桥接 `domain.RuntimeEvent`→observability；推 `approval_pending`/`approval_resolved`。
+- **Plan 模式** = `Registry.Subset` 只读工具 + 系统提示，产出 **OKF markdown** 计划写会话目录 `plans/`。
 
-之后：**M2**（模式+审批+SSE）、**M3**（working_dir + GUI 整合 + TUI 整合）各出一份 plan。
+**⚠️ M2 落地时必须处理的 M1b 遗留**（见 §0 末）：checkpoint 当前按 session 单文件 `task-state.json` —— 真实 gate 上线后，若同 SessionID 可能有多个并发可挂起任务，须保证「每会话至多一个可挂起任务」不变量，或把检查点改为按 task 键。
+
+之后：**M3**（working_dir + GUI 整合 + TUI 整合）出一份 plan。
 
 ## 4. 锁定决策（spec 全文见 docs/superpowers/specs/2026-07-15-agent-working-modes-design.md）
 

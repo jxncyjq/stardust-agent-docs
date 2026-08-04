@@ -81,6 +81,8 @@ related_docs:
 | [[design-plugin-protocol-013]] | 插件与协议扩展技术设计 | design | `design/analysis/claude/13-插件与协议扩展设计.md` | plugins, mcp, adapter, oauth, hooks, lifecycle |
 | [[design-agent-tiered-memory-001]] | 分层记忆注入设计（冻结快照 + 情景检索，移植 hermes-agent） | design | `design/architecture/agent_components/tiered-memory-injection-design.md` | agent-engine, memory, prompt-cache, token-optimization, episodic, hermes-port |
 | [[design-agent-interop-protocols-001]] | Agent 互操作协议对比：A2A vs ACP vs MCP（Legion 落地成本） | design | `design/architecture/agent_components/agent-interop-protocols-comparison.md` | agent-interop, a2a, acp, mcp, protocol, decision |
+| [[spec-agent-browser-001]] | Agent 内置浏览器子系统 PRD | spec | `design/architecture/agent-browser-prd.md` | agent, browser, runtime, prd, tool, go-rod |
+| [[design-agent-browser-runtime-001]] | Agent 内置浏览器子系统技术 spec（legionAgent 接线） | design | `superpowers/specs/2026-08-04-agent-browser-design.md` | agent, browser, runtime, go-rod, spec, legionagent, sse, pal |
 | [[index-analysis-000]] | Claw Code 分析文档索引 | reference | `design/analysis/claude/index.md` | index, analysis, claw-code |
 | [[analysis-deepseek-tui-overview-001]] | DeepSeek-TUI 项目总览 | analysis | `design/analysis/deepseek-tui/01-overview.md` | deepseek-tui, architecture, rust, tui, overview |
 | [[analysis-deepseek-tui-crates-002]] | DeepSeek-TUI Crate 职责分析 | analysis | `design/analysis/deepseek-tui/02-crate-analysis.md` | deepseek-tui, rust, crates, architecture, modules |
@@ -390,6 +392,7 @@ related_docs:
 - [[design-agent-runtime-009]] — Agent 运行时引擎技术设计
 - [[design-agent-tiered-memory-001]] — 分层记忆注入设计（冻结快照 + 情景检索，移植 hermes-agent）
 - [[design-agent-interop-protocols-001]] — Agent 互操作协议对比：A2A vs ACP vs MCP（Legion 落地成本）
+- [[design-agent-browser-runtime-001]] — Agent 内置浏览器子系统技术 spec（legionAgent 接线）
 - [[design-llm-infra-abstraction-001]] — LLM 底层基础设施抽象化设计
 - [[design-maas-001]] — MaaS 模型调度层设计分析
 - [[design-maas-scheduling-008]] — MaaS 模型调度层技术设计
@@ -512,6 +515,7 @@ related_docs:
 ### spec
 
 - [[agent-mvp-001]] — Agent MVP
+- [[spec-agent-browser-001]] — Agent 内置浏览器子系统 PRD
 - [[spec-agent-aegis-reviewer-060]] — AegisReviewer 组件规范
 - [[spec-agent-approval-service-062]] — ApprovalService 组件规范
 - [[spec-agent-background-scheduler-012]] — BackgroundScheduler 组件规范

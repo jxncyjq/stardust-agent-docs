@@ -7,7 +7,7 @@ category: "design/analysis/hermes"
 tags: ["hermes-agent", "index", "analysis"]
 version: "1.0.0"
 created: "2026-05-03"
-updated: "2026-05-04"
+updated: "2026-07-02"
 author: "jxncyjq"
 status: "review"
 parent: null
@@ -19,6 +19,7 @@ children:
   - "analysis-hermes-datamodels-005"
   - "analysis-hermes-insights-006"
   - "analysis-hermes-vs-evolver-007"
+  - "analysis-hermes-updates-008"
 ---
 
 <!-- @section: index -->
@@ -29,7 +30,7 @@ children:
 本目录包含对 **Hermes Agent**（Nous Research 开发的自我完善的 AI Agent 框架）的完整架构分析文档。Hermes Agent 是当前功能最丰富的开源 AI Agent 平台，是 Legion AI Agent 运行时引擎的重要参考项目。
 
 - 分析对象：`hermes-agent/`（Python 3.11+, React 19, Ink v6）
-- 文档数量：7 份分析文档 + 1 份索引
+- 文档数量：8 份分析文档 + 1 份索引（01–07 为 2026-05-04 快照，08 为 v0.17 增量）
 - 分析深度：系统级（架构、运行时、工具系统、网关、数据层）
 
 ## 文档列表
@@ -43,6 +44,7 @@ children:
 | 05 | [[05-data-models|状态持久化与数据模型分析]] | SessionDB (SQLite+FTS5)、配置系统、日志 | review |
 | 06 | [[06-hermes-insights|Hermes 洞察与 Legion 参考]] | 设计模式提炼、差异化方向、设计建议 | review |
 | 07 | [[07-hermes-vs-evolver|Hermes vs Evolver 深度对比]] | 两项目深度对比、Hermes 独特优势、对 Legion 的启示 | review |
+| 08 | [[08-hermes-v017-updates|v0.13→v0.17 新增功能分析]] | MoA、增强委派、Kanban、Curator、Goal/中途注入、session_search、记忆增强、Token 视角 | review |
 
 ## 文档依赖关系
 
@@ -53,7 +55,8 @@ children:
   │     └── 05-data-models (数据模型)
   ├── 04-gateway-cli-deployment (入口与部署)
   ├── 06-hermes-insights (Legion 参考) ← 汇总全部
-  └── 07-hermes-vs-evolver (Evolver 对比) ← 横向对比
+  ├── 07-hermes-vs-evolver (Evolver 对比) ← 横向对比
+  └── 08-hermes-v017-updates (v0.17 增量) ← 追加 02/03/04/05 之后的新功能
 ```
 
 ## 阅读路径
