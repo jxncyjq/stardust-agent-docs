@@ -31,6 +31,7 @@ related_docs:
 | [[agent-api-errors-001]] | Legion Agent API Error Contract | guide | `agents/legion-agent/api-errors.md` | agent, api, error, contract |
 | [[agent-ci-001]] | Legion Agent CI 流水线 | guide | `agents/legion-agent/ci.md` | agent, ci, pipeline |
 | [[agent-component-parity-001]] | Agent Component Parity | reference | `agents/legion-agent/component-parity.md` | agent, parity, components |
+| [[bug-explore-hallucinated-paths-001]] | BUG — 探索项目时模型臆想 monorepo 路径，反复读不存在文件 | reference | `agents/bug/2026-08-05-model-hallucinated-monorepo-paths.md` | bug, agent-behavior, tool-loop, hallucination, grounding |
 | [[agent-configuration-001]] | Legion Agent 配置 | guide | `agents/legion-agent/configuration.md` | agent, configuration, config |
 | [[agent-data-retention-001]] | Legion Agent 数据保留与导出 | guide | `agents/legion-agent/data-retention.md` | agent, data, retention, export |
 | [[agent-e2e-smoke-001]] | Legion Agent 端到端 Smoke 验收 | guide | `agents/legion-agent/e2e-smoke.md` | agent, e2e, smoke, test |
@@ -494,6 +495,7 @@ related_docs:
 - [[agent-skill-registry-001]] — Legion Agent Skill Registry
 - [[agent-sqlite-schema-001]] — Legion Agent agent.db 数据结构
 - [[agent-traces-001]] — Legion Agent Trace Snapshot
+- [[bug-explore-hallucinated-paths-001]] — BUG 探索臆想 monorepo 路径（list_files/read_file 不存在文件）
 - [[index-analysis-000]] — Claw Code 分析文档索引
 - [[reference-docs-index-001]] — 文档索引
 - [[reference-index-001]] — Legion Agent 参考手册索引
