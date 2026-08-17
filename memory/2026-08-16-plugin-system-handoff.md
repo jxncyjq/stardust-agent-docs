@@ -5,7 +5,7 @@ aliases: ["插件系统接续", "plugin system handoff", "prompt cache 未完事
 type: "reference"
 category: "memory"
 tags: ["handoff", "worklog", "plugin-system", "wasm", "prompt-cache", "deepseek", "legion-agent"]
-version: "3.0.0"
+version: "3.1.0"
 created: "2026-08-16"
 updated: "2026-08-17"
 author: "jxncyjq"
@@ -61,7 +61,7 @@ related_docs:
 |---|---|---|
 | 插件载体 | **WASM**（第三方开发 + 分发 + 热加载三个需求都成立，只有 WASM 同时满足单文件跨平台 + 真沙箱 + 能力最小化） | `06-wasm-plugin-porting.md` §六 |
 | WASM 运行时 | **wazero**（纯 Go 无 CGO，保住多平台构建矩阵与 Wails 打包） | 实测：4.7x 原生开销可接受 |
-| guest 语言 | **不限**。第三方推荐 Rust（68KB / 9µs / 4MiB 可用）；Go 用 TinyGo 0.34+ `-target wasip1 -buildmode=c-shared` | spike S1/S2 实测 |
+| guest 语言 | **Rust（推荐）+ 标准 Go**。**TinyGo 已于 2026-08-17 排除**，不作选项也不再评估 | spike S1/S2 实测 |
 | 契约格式 | **JSON + JSON Schema**（放弃 protobuf——跨语言场景下编译期类型安全拿不到，且与 Legion 既有 `tool.Descriptor.InputSchema` 同构） | 见设计方案 §6.2 |
 | Component Model / WASI p2 | **移除，不是「以后再评估」** | 标准 Go 编译器不支持（`GOOS=wasip2` = golang/go#65333，Open + Backlog + 无 PR），wazero 也未实现 p2——双重阻塞 |
 | Cordis 第三问（依赖收敛） | **要实现**，简化三态（Active / Suspended / Unloaded） | 早期曾判断「WASM 免疫所以不需要」，**这个判断是错的**：guest 不持有 host 引用只免除了「清理旧引用」，不免除「依赖不满足时不该运行」 |
@@ -145,12 +145,13 @@ A1 / A2 / B / C 已完成（2026-08-17）。下表保留全部条目并标注结
 
 | 项 | 说明 |
 |---|---|
-| TinyGo | **仍未装未测**——「TinyGo 不作主路径」的判断至今是推理，非实测。需下载安装工具链（约 200MB），未获授权前未执行 |
 | JS / Python guest | 未测 |
-| 长时间 soak | 仅到 2000 次调用，不足以判断 TinyGo GC 碎片化 |
+| 长时间 soak | 仅到 2000 次调用，不足以判断标准 Go guest 的 GC 碎片化 |
 | 插件事件订阅开销 | 未测（高频事件对主链路的延迟影响） |
 
-这四项都不阻塞 A3：Rust guest 已实测可用（68KB / 9µs / 4MiB），标准 Go guest 也实测可用（3.26MB / 62µs / 8MiB）。TinyGo 只影响「Go 插件作者的产物体积」这一条，可在 A3 之后补测。
+这几项都不阻塞 A3：Rust guest 已实测可用（68KB / 9µs / 4MiB），标准 Go guest 也实测可用（3.26MB / 62µs / 8MiB）。
+
+> **TinyGo 已排除（2026-08-17 决定）**，从待办中移除：不再评估、不再补测，`.wasm` 体积成为瓶颈时也不回头找它。
 
 <!-- @end-section -->
 

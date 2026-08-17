@@ -5,9 +5,9 @@ aliases: ["legion plugin system", "Legion 插件系统", "plugin lifecycle kerne
 type: "design"
 category: "design/architecture"
 tags: ["legion", "plugin", "cordis", "wasm", "wazero", "lifecycle", "architecture"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-08-16"
-updated: "2026-08-16"
+updated: "2026-08-17"
 author: "jxncyjq"
 status: "draft"
 parent: null
@@ -331,9 +331,17 @@ func (h *Host) activate(ctx context.Context, spec Spec) (err error) {
 
 **决策：路线 B。** 决定性理由是 **TinyGo 的 `reflect` 限制与 protobuf 强类型契约相冲突**——而强类型契约是本方案对齐 dsh Typert 的核心（构建期生成、签名漂移编译期就炸）。为了保住它去赌 TinyGo 的 reflect 兼容性，不如自己写一层 200 行的内存约定。次要理由：插件作者主体是 Go 团队，标准 Go 的完整 stdlib（`regexp` / `encoding/json` / `net/url` / `crypto` / `time`）对写工具插件价值直接。
 
-**接受的代价**：① 失去多语言 PDK（缓解：ABI 是稳定的字节协议，将来可在其上包 Extism 兼容层，或直接为其它语言提供同协议 SDK）；② `.wasm` 产物 2–10MB（缓解：`-ldflags="-s -w"`、插件包内 gzip、wazero 编译缓存复用）。
+**接受的代价**：
 
-**回退条件**（写明以便将来复审）：若出现「必须支持非 Go 语言写插件」的硬需求，且届时 TinyGo 的 reflect 已能跑通 protobuf-go，则改走路线 A，ABI 语义层不变。
+① ~~失去多语言 PDK~~ — **spike 已消解**：同一份 host（约 190 行）跑通了 Go 与 **Rust** 两种 guest，Rust 产物 68KB / 9µs / 4MiB。多语言不需要 Extism，写一份同协议 SDK 即可。
+
+② `.wasm` 产物：标准 Go guest 实测 **3.26MB**，内存下限 **8MiB**（4MiB 下第 692 次调用 OOM）。缓解：`-ldflags="-s -w"`、插件包内 gzip、wazero 编译缓存复用；体积敏感的插件写 Rust。
+
+**TinyGo：已排除，无回退条件**（2026-08-17 决定）。
+
+原本写的回退条件是「若出现必须支持非 Go 语言的硬需求，且届时 TinyGo 的 reflect 能跑通 protobuf-go，则改走路线 A」。**它的前提已经不成立**——多语言需求被 Rust guest 直接满足了，与 TinyGo 无关；而 protobuf 本身也已在 §6.2 被 JSON + JSON Schema 取代。两个触发条件都消失，这条回退作废。
+
+因此：不再评估 TinyGo，不再补测，`.wasm` 体积成为分发瓶颈时也不回头找它——用压缩与编译缓存，或让作者改写 Rust。
 
 **明确不做**：Component Model / WIT。wazero 尚未实现 WASI p2，标准 Go 编译器不支持 CM。
 
@@ -710,7 +718,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | 插件互调成环（`host_call_tool`） | 递归深度上限 + 调用链记录，超限 fail-loud |
 | 生态选型时效 | wazero 仅 WASI p1、标准 Go 不支持 Component Model — 数月后重新决策需复核当时状态 |
 | 自研 ABI 需自己维护 | 面积很小（4 个导出 + 6 个 host function + 一份 `.proto`），且 §6.1 写明了回退到 Extism 的条件 |
-| `.wasm` 产物 2–10MB | `-ldflags="-s -w"` + 包内 gzip + 编译缓存；若成为分发瓶颈则重新评估 TinyGo |
+| 标准 Go guest 产物 3.26MB、内存下限 8MiB | `-ldflags="-s -w"` + 包内 gzip + wazero 编译缓存；体积敏感的插件改写 Rust（68KB / 4MiB）。**不回头找 TinyGo**——已排除，理由见 §6.1 |
 
 ### 明确不做
 

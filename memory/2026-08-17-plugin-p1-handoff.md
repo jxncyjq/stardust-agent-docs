@@ -5,7 +5,7 @@ aliases: ["插件系统剩余", "P1 WASM 宿主接续", "plugin p1 handoff", "20
 type: "reference"
 category: "memory"
 tags: ["handoff", "worklog", "plugin-system", "wasm", "wazero", "abi", "legion-agent"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-08-17"
 updated: "2026-08-17"
 author: "jxncyjq"
@@ -38,7 +38,7 @@ related_docs:
 | 项 | 状态 |
 |---|---|
 | PR [#79](https://github.com/jxncyjq/stardust-agent-server/pull/79) 能力目录分区渲染 | ✅ 已合入 master（`1c9026d`） |
-| PR [#80](https://github.com/jxncyjq/stardust-agent-server/pull/80) P0 生命周期内核 + 4 个缺陷修复 | **待合并**（9 commit，全绿） |
+| PR [#80](https://github.com/jxncyjq/stardust-agent-server/pull/80) P0 生命周期内核 + 4 个缺陷修复 | **待合并**（11 commit，全绿） |
 | P0.5 能力面契约 | ✅ 定稿于设计方案 §6.12，4 条中 2 条已落地 |
 
 **第一步：合并 PR #80。** 下面所有工作都建立在它之上。
@@ -54,9 +54,13 @@ related_docs:
 | A4 | P2 Loader + 三态依赖收敛 + 任务边界生效（含 B5） | 中 | A3 |
 | A5 | P3 分发面：签名、来源、CLI、GUI 授权同意流 | 中 | A4 |
 | A6 | P4 作者体验：多语言模板、dev 模式、示例 | 小 | A3 |
-| D | spike 补测：TinyGo / JS / Python guest / 长 soak / 事件开销 | 小 | 无，随时可做 |
+| D | spike 补测：JS / Python guest / 长 soak / 事件开销 | 小 | 无，随时可做 |
 
-D 组不阻塞任何事：Rust guest（68KB / 9µs / 4MiB）与标准 Go guest（3.26MB / 62µs / 8MiB）都已实测可用。TinyGo 只影响「Go 插件作者的产物体积」一条。**2026-08-17 明确决定跳过 TinyGo 实测**，不下载工具链。
+D 组不阻塞任何事：Rust guest（68KB / 9µs / 4MiB）与标准 Go guest（3.26MB / 62µs / 8MiB）都已实测可用。
+
+> **TinyGo 已排除（2026-08-17 决定），不再是待选项。** Go guest 只走标准 Go 编译器（`GOOS=wasip1` + `//go:wasmexport` + `-buildmode=c-shared`）。代价是明确接受的：产物 3.26MB、内存下限 8MiB、单次调用 62µs。想要小产物的插件作者写 Rust。
+>
+> 不必再评估、不必再测、`.wasm` 体积成为瓶颈时也不回头找 TinyGo——改用压缩与编译缓存。理由见设计方案 §6.1 路线权衡表（TinyGo 的 `reflect` 限制与强类型契约冲突）。
 
 <!-- @end-section -->
 
@@ -69,8 +73,8 @@ D 组不阻塞任何事：Rust guest（68KB / 9µs / 4MiB）与标准 Go guest�
 |---|---|---|
 | wazero 宿主 | `internal/plugin/host` | 运行时、编译缓存、实例池 |
 | ABI v1 | `internal/plugin/abi` | 4 个 guest 导出 + 6 个 host function |
-| guest SDK | `pkg/legionplugin` | Go 插件作者用；Rust SDK 单独仓或 A6 |
-| 能力白名单 | `internal/plugin/capability` | 未授权的能力**不注册进模块**（链接期缺失，非运行时拒绝） |
+| guest SDK | `pkg/legionplugin` | Go 插件作者用；Rust SDK 单独仓或 A6。**注意仓库目前没有 `pkg/`**，这是新建顶层目录 |
+| 能力白名单 | `internal/plugin/perm` | 未授权的能力**不注册进模块**（链接期缺失，非运行时拒绝）。**别叫 `capability`**——`internal/capability` 已被能力目录占用，同名两个包 import 时必须起别名且极易看错 |
 | 分步激活 + 回滚 | 复用 `lifecycle.Ledger` | 已就位，见下 |
 | 在途调用收敛 | 实例池 `inflight sync.WaitGroup` | Draining → 在途归零 → Unloaded |
 
@@ -98,9 +102,11 @@ toolauth.Contribute(GateableTool) func()
 // 审计归因（走 context 传播）
 tool.WithCallOrigin(ctx, "plugin:<name>") context.Context
 
-// loop guard 的有效工具名（插件侧复用同一函数）
-runtime.guardedToolName(call domain.ToolCall) string
+// loop guard 的有效工具名
+runtime.guardedToolName(call domain.ToolCall) string   // ⚠️ 未导出，见下
 ```
+
+> ⚠️ **`guardedToolName` 是 `internal/runtime` 包内的未导出函数**，`internal/plugin/*` 直接调不到。契约 1 要求插件调用与模型调用共用计数器，所以 A3 的**第一项前置改动**是把它导出，或连同 guard 计数一起抽进一个双方都能 import 的位置。别在插件侧另写一份——两份实现分叉就等于两个计数器，正是契约 1 要防的。
 
 **插件注册一个工具的完整动作**是三件事挂在同一个 `lifecycle.Owner` 上：
 
@@ -164,7 +170,13 @@ C:\Users\ADMINI~1\AppData\Local\Temp\claude\F--source-stardust-Legion\
     deps/guests/{prov,cons}
 ```
 
-**A3 开工第一件事：如果这些文件还在，先拷进 `legionAgent/internal/plugin/` 作为起点。** 如果已被清理，本节的 ABI 形状 + 配置足以重建；`deps/` 的三态收敛逻辑要重写，但 §5.5 的状态表已足够。
+**截至 2026-08-17 这些文件仍在。** A3 开工先拷走——但不是挪文件那么简单：
+
+- spike 是**独立 module**（`module spike`，自带 go.mod，依赖 `wazero v1.12.0`）
+- **legionAgent 的 go.mod 还没有 wazero 依赖**，要先 `go get github.com/tetratelabs/wazero`
+- `abi/host/main.go` 是 `package main` 的命令行程序，拆成库要重构 import 路径
+
+如果已被清理：本节的 ABI 形状 + wazero 配置足以重建 host；`deps/` 的三态收敛逻辑要重写，§5.5 的状态表足够。
 
 ### A3 的 TDD 验收（建议）
 
@@ -200,7 +212,7 @@ C:\Users\ADMINI~1\AppData\Local\Temp\claude\F--source-stardust-Legion\
 |---|---|
 | 插件载体 | **WASM**。第三方开发 + 分发 + 热加载三个需求同时成立，只有它满足单文件跨平台 + 真沙箱 + 能力最小化 |
 | 运行时 | **wazero**。纯 Go 无 CGO，保住多平台构建矩阵与 Wails 打包。4.7x 原生开销可接受 |
-| guest 语言 | 不限。第三方推荐 Rust；Go 用 TinyGo（未实测） |
+| guest 语言 | **Rust（推荐）+ 标准 Go**。**TinyGo 已排除**，不作选项也不再评估——`reflect` 限制与强类型契约冲突，见 §6.1 |
 | 契约格式 | **JSON + JSON Schema**。放弃 protobuf——跨语言拿不到编译期类型安全，且与既有 `tool.Descriptor.InputSchema` 同构 |
 | Component Model / WASI p2 | **移除，不是「以后再评估」**。标准 Go 不支持（golang/go#65333 Open + Backlog + 无 PR），wazero 也未实现——双重阻塞 |
 | 依赖收敛 | **要做**，简化三态（Active / Suspended / Unloaded）。早期「WASM 免疫所以不需要」的判断已被推翻 |
@@ -250,7 +262,7 @@ C:\Users\ADMINI~1\AppData\Local\Temp\claude\F--source-stardust-Legion\
 4. **安全边界要用探针实测，不要靠推理列风险。** Windows 路径绕过原本怀疑的三项（大小写 / 8.3 短名 / UNC）**全部被证伪**；真漏洞是没想到的两类（设备名 `NUL`/`CON`、ADS `file:stream`）。推理清单与实测清单的交集可以是空的。
 
 5. **变异验证是必须的。** 本轮两次抓出「测试绿但根本没测到东西」：
-   - `TestActivationFailureRollsBack` 假绿——`activate()` 的所有失败点都在第一次 `ledger.Add` 之前，回滚路径是死代码。加了清单交叉校验（在实例入册**之后**）才让回滚变活
+   - `TestActivationFailureRollsBack` 假绿（**在 spike 的 `deps/loader_test.go` 里，不在仓库——grep 不到是正常的**）：`activate()` 的所有失败点都在第一次 `ledger.Add` 之前，回滚路径是死代码。加了清单交叉校验（在实例入册**之后**）才让回滚变活。A3 实现分步激活时会原样遇到这个陷阱
    - `auditOrigin` 默认归一被去掉后往返测试立刻 FAIL——证明测试真咬住了
 
 6. **「WASM 免疫依赖问题」是错的。** guest 拿不到 host 引用只免除「幽灵」（卸载后旧引用还在被调用），不免除「半残」（依赖不满足时插件仍在运行、仍被模型看见、每次都失败）。
@@ -262,7 +274,9 @@ C:\Users\ADMINI~1\AppData\Local\Temp\claude\F--source-stardust-Legion\
 
 - `-race` 并行跑多包时 storage 会偶发 CGO sqlite 崩溃（`unexpected return pc`），**master 上同样出现**，与代码无关。逐包串行跑即可
 - Go 编译器本身偶发 `cmd/internal/obj.pctofileline` nil deref，`go clean -cache` 后重跑
-- docs 仓改动一直**未提交**（含更早遗留的未跟踪文件）。要提交需明确指示
+- docs 仓的文档积压已于 2026-08-17 提交（32 文件）；**后续 docs 改动由仓库所有者自行提交**，不要代为 commit/push
+- GUI 仓 wails 绑定与 go.mod 同步见 stardust-agent-gui PR #21
+- server 仓 `tasks/` 下是真机测试留下的任务台账，一直保持未提交，不要顺手 add
 
 <!-- @end-section -->
 
