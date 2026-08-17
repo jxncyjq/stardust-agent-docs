@@ -1,11 +1,11 @@
 ---
 id: "reference-plugin-p1-handoff-20260817-001"
-title: "接续入口 — 插件系统 P1 及剩余事项（2026-08-17）"
+title: "接续入口 — 插件系统 P1 实现就绪（2026-08-17）"
 aliases: ["插件系统剩余", "P1 WASM 宿主接续", "plugin p1 handoff", "2026-08-17 handoff"]
 type: "reference"
 category: "memory"
 tags: ["handoff", "worklog", "plugin-system", "wasm", "wazero", "abi", "legion-agent"]
-version: "1.1.0"
+version: "2.0.0"
 created: "2026-08-17"
 updated: "2026-08-17"
 author: "jxncyjq"
@@ -35,13 +35,23 @@ related_docs:
 
 ### 当前状态
 
+> ✅ **调研阶段已结束（2026-08-17）。三仓 PR 全部合并，实现可以开始。**
+
 | 项 | 状态 |
 |---|---|
-| PR [#79](https://github.com/jxncyjq/stardust-agent-server/pull/79) 能力目录分区渲染 | ✅ 已合入 master（`1c9026d`） |
-| PR [#80](https://github.com/jxncyjq/stardust-agent-server/pull/80) P0 生命周期内核 + 4 个缺陷修复 | **待合并**（11 commit，全绿） |
+| server PR [#79](https://github.com/jxncyjq/stardust-agent-server/pull/79) 能力目录分区渲染 | ✅ 已合 |
+| server PR [#80](https://github.com/jxncyjq/stardust-agent-server/pull/80) P0 生命周期内核 + 4 个缺陷修复 | ✅ 已合（master `df7c7b9`） |
+| docs PR #1 / #2 文档积压 + TinyGo 排除 | ✅ 已合（main `f810aff`） |
+| gui PR [#21](https://github.com/jxncyjq/stardust-agent-gui/pull/21) wails 绑定同步 | ✅ 已合（master `f98f827`） |
 | P0.5 能力面契约 | ✅ 定稿于设计方案 §6.12，4 条中 2 条已落地 |
 
-**第一步：合并 PR #80。** 下面所有工作都建立在它之上。
+**内核已在 master 验证就位**：`internal/lifecycle/ledger.go`、`toolauth.Contribute`、`guardedToolName`、`audit_events.origin` 均存在，`go build ./...` 通过。
+
+## 👉 下一步：执行 A3 实施计划
+
+**`legionAgent/docs/superpowers/plans/2026-08-17-plugin-wasm-host.md`**
+
+9 个 task（Task 0 前置 + Task 1–8），每个带 TDD 步骤与**变异验证**要求，可直接开工。本文档余下部分是它的背景资料。
 
 <!-- @end-section -->
 
@@ -50,7 +60,7 @@ related_docs:
 
 | # | 事项 | 规模 | 依赖 |
 |---|---|---|---|
-| **A3** | **P1 WASM 插件宿主** | 大（本文档主体） | PR #80 合并 |
+| **A3** | **P1 WASM 插件宿主** — 计划已就绪：`plans/2026-08-17-plugin-wasm-host.md`（9 task） | 大 | ✅ 前置已满足 |
 | A4 | P2 Loader + 三态依赖收敛 + 任务边界生效（含 B5） | 中 | A3 |
 | A5 | P3 分发面：签名、来源、CLI、GUI 授权同意流 | 中 | A4 |
 | A6 | P4 作者体验：多语言模板、dev 模式、示例 | 小 | A3 |
@@ -106,7 +116,7 @@ tool.WithCallOrigin(ctx, "plugin:<name>") context.Context
 runtime.guardedToolName(call domain.ToolCall) string   // ⚠️ 未导出，见下
 ```
 
-> ⚠️ **`guardedToolName` 是 `internal/runtime` 包内的未导出函数**，`internal/plugin/*` 直接调不到。契约 1 要求插件调用与模型调用共用计数器，所以 A3 的**第一项前置改动**是把它导出，或连同 guard 计数一起抽进一个双方都能 import 的位置。别在插件侧另写一份——两份实现分叉就等于两个计数器，正是契约 1 要防的。
+> ⚠️ **`guardedToolName` 是 `internal/runtime` 包内的未导出函数**，`internal/plugin/*` 直接调不到。契约 1 要求插件调用与模型调用共用计数器，所以它必须先导出——**已列为实施计划的 Task 0**，推荐移进 `internal/domain`（纯函数、双方都 import、可避免 plugin↔runtime 成环）。别在插件侧另写一份：两份实现分叉就等于两个计数器，正是契约 1 要防的。
 
 **插件注册一个工具的完整动作**是三件事挂在同一个 `lifecycle.Owner` 上：
 
@@ -127,14 +137,15 @@ runtime.guardedToolName(call domain.ToolCall) string   // ⚠️ 未导出，见
 
 ### ABI v1 形状（spike 已验证，Go + Rust guest 共用同一 host）
 
-**guest 导出**：
+**guest 导出（3 个，以 spike 源码为准）**：
 
 ```
-plugin_alloc(size i32) -> i32       // host 回写数据前必须调它
+plugin_alloc(size i32) -> i32          // host 写入前必须先调它拿地址
 plugin_free(ptr i32, size i32)
-plugin_manifest() -> i64            // 自描述：name/version/provides，激活后交叉校验
-plugin_call(op i32, ptr i32, len i32) -> i64
+plugin_invoke(op i32, ptr i32, len i32) -> i64
 ```
+
+> ⚠️ 本文档 v1.1 之前把导出名写成 `plugin_call`、并多列了一个 `plugin_manifest`，**都是错的**。核对 spike 源码（`abi/host/main.go:130-133`、`deps/loader.go:533`）：名字是 **`plugin_invoke`**，且自描述清单是它的一个保留 op，不是独立导出。
 
 **返回值打包**：`i64` 高 32 位 = ptr，低 32 位 = len。
 
