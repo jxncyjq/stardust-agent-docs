@@ -5,9 +5,9 @@ aliases: ["docs index", "文档总索引"]
 type: "reference"
 category: "index"
 tags: ["index", "docs", "navigation"]
-version: "3.1.0"
+version: "3.3.0"
 created: "2026-06-24"
-updated: "2026-06-24"
+updated: "2026-08-17"
 author: "jxncyjq"
 status: "published"
 parent: null
@@ -32,6 +32,7 @@ related_docs:
 | [[agent-ci-001]] | Legion Agent CI 流水线 | guide | `agents/legion-agent/ci.md` | agent, ci, pipeline |
 | [[agent-component-parity-001]] | Agent Component Parity | reference | `agents/legion-agent/component-parity.md` | agent, parity, components |
 | [[bug-explore-hallucinated-paths-001]] | BUG — 探索项目时模型臆想 monorepo 路径，反复读不存在文件 | reference | `agents/bug/2026-08-05-model-hallucinated-monorepo-paths.md` | bug, agent-behavior, tool-loop, hallucination, grounding |
+| [[bug-prompt-cache-backend-mismatch-001]] | BUG — prompt cache 断点机制与实际后端不匹配（cache_control 对 DeepSeek 无效） | reference | `agents/bug/2026-08-16-prompt-cache-backend-mismatch.md` | bug, prompt-cache, deepseek, cache-control, stable-prefix, cost |
 | [[agent-configuration-001]] | Legion Agent 配置 | guide | `agents/legion-agent/configuration.md` | agent, configuration, config |
 | [[agent-data-retention-001]] | Legion Agent 数据保留与导出 | guide | `agents/legion-agent/data-retention.md` | agent, data, retention, export |
 | [[agent-e2e-smoke-001]] | Legion Agent 端到端 Smoke 验收 | guide | `agents/legion-agent/e2e-smoke.md` | agent, e2e, smoke, test |
@@ -84,6 +85,11 @@ related_docs:
 | [[design-agent-interop-protocols-001]] | Agent 互操作协议对比：A2A vs ACP vs MCP（Legion 落地成本） | design | `design/architecture/agent_components/agent-interop-protocols-comparison.md` | agent-interop, a2a, acp, mcp, protocol, decision |
 | [[spec-agent-browser-001]] | Agent 内置浏览器子系统 PRD | spec | `design/architecture/agent-browser-prd.md` | agent, browser, runtime, prd, tool, go-rod |
 | [[design-agent-browser-runtime-001]] | Agent 内置浏览器子系统技术 spec（legionAgent 接线） | design | `superpowers/specs/2026-08-04-agent-browser-design.md` | agent, browser, runtime, go-rod, spec, legionagent, sse, pal |
+| [[design-agent-browser-view-ui-001]] | GUI 内置浏览器视图 UI 技术 spec（canvas 渲染 screencast） | design | `superpowers/specs/2026-08-08-agent-browser-view-ui-design.md` | agent, browser, gui, react, canvas, screencast, sse |
+| [[design-agent-browser-takeover-001]] | Agent 内置浏览器接管模式技术 spec（人工回注输入 + 暂停 Agent） | design | `superpowers/specs/2026-08-09-agent-browser-takeover-design.md` | agent, browser, takeover, cdp, input-injection, gui |
+| [[design-gui-html-preview-panel-001]] | GUI HTML 预览面板技术 spec（iframe srcdoc 静态渲染） | design | `superpowers/specs/2026-08-09-gui-html-preview-panel-design.md` | gui, react, iframe, webview, html, preview, wails, spec |
+| [[design-gui-workspace-file-browser-001]] | GUI 工作目录文件浏览器技术 spec（文件树+类型分派预览+外部编辑器） | design | `superpowers/specs/2026-08-09-gui-workspace-file-browser-design.md` | gui, react, wails, file-browser, preview, shiki, markdown, spec |
+| [[design-gui-generated-file-cards-001]] | GUI 对话生成文件卡片技术 spec（卡片+预览/下载/外部打开/复制链接） | design | `superpowers/specs/2026-08-10-gui-generated-file-cards-design.md` | gui, react, wails, generated-files, file-card, preview, download, spec |
 | [[index-analysis-000]] | Claw Code 分析文档索引 | reference | `design/analysis/claude/index.md` | index, analysis, claw-code |
 | [[analysis-deepseek-tui-overview-001]] | DeepSeek-TUI 项目总览 | analysis | `design/analysis/deepseek-tui/01-overview.md` | deepseek-tui, architecture, rust, tui, overview |
 | [[analysis-deepseek-tui-crates-002]] | DeepSeek-TUI Crate 职责分析 | analysis | `design/analysis/deepseek-tui/02-crate-analysis.md` | deepseek-tui, rust, crates, architecture, modules |
@@ -93,6 +99,13 @@ related_docs:
 | [[analysis-deepseek-tui-storage-006]] | DeepSeek-TUI 会话管理与持久化 | analysis | `design/analysis/deepseek-tui/06-session-storage.md` | deepseek-tui, session, sqlite, storage, config, persistence |
 | [[analysis-deepseek-tui-insights-007]] | DeepSeek-TUI 设计洞察与 Legion 参考 | analysis | `design/analysis/deepseek-tui/07-insights.md` | deepseek-tui, legion, design-reference, lessons-learned, architecture |
 | [[analysis-deepseek-tui-index]] | DeepSeek-TUI 分析文档索引 | analysis | `design/analysis/deepseek-tui/index.md` | deepseek-tui, rust, tui, ratatui, llm-client, index, analysis |
+| [[analysis-dsh-overview-001]] | DeepSeek Harness 项目总览 | analysis | `design/analysis/deepseek-harness/01-overview.md` | deepseek-harness, dsh, cordis, agent, typescript, monorepo |
+| [[analysis-dsh-architecture-002]] | DeepSeek Harness 系统架构 | analysis | `design/analysis/deepseek-harness/02-architecture.md` | deepseek-harness, architecture, cordis, event-sourcing, agent-loop, microkernel |
+| [[analysis-dsh-plugin-system-003]] | DeepSeek Harness 插件系统 | analysis | `design/analysis/deepseek-harness/03-plugin-system.md` | deepseek-harness, plugin, capability-seam, cordis, scope, hmr |
+| [[analysis-dsh-capabilities-004]] | DeepSeek Harness 核心能力 | analysis | `design/analysis/deepseek-harness/04-core-capabilities.md` | deepseek-harness, tools, sandbox, subagent, compaction, session, capability |
+| [[analysis-dsh-insights-005]] | DeepSeek Harness 评估与对 Legion 的借鉴 | analysis | `design/analysis/deepseek-harness/05-insights.md` | deepseek-harness, insights, legion, comparison, architecture-decision |
+| [[analysis-dsh-wasm-porting-006]] | dsh 插件模型向 Go+WASM 的移植分析与选型 | analysis | `design/analysis/deepseek-harness/06-wasm-plugin-porting.md` | deepseek-harness, wasm, wazero, extism, go-plugin, legion, plugin-architecture |
+| [[analysis-dsh-index]] | DeepSeek Harness 分析索引 | analysis | `design/analysis/deepseek-harness/index.md` | deepseek-harness, dsh, index, analysis, cordis, agent |
 | [[analysis-evolver-overview-001]] | Evolver 项目架构总览 | analysis | `design/analysis/evolver/01-overview.md` | evolver, gep, evolution, agent, javascript, self-improvement |
 | [[analysis-evolver-gep-002]] | GEP 基因组进化协议分析 | analysis | `design/analysis/evolver/02-gep-protocol.md` | evolver, gep, genome, evolution, signals, assets |
 | [[analysis-evolver-atp-003]] | ATP Agent 交易协议分析 | analysis | `design/analysis/evolver/03-atp-protocol.md` | evolver, atp, agent-transaction, marketplace, protocol |
@@ -132,6 +145,14 @@ related_docs:
 | [[analysis-mission-control-data-api-006]] | Mission Control 数据模型与 API 参考 | analysis | `design/analysis/mission-control/06-data-models-api.md` | mission-control, schema, rest-api, mcp-tools, database, openapi |
 | [[analysis-mission-control-insights-007]] | Mission Control 设计洞察与 Legion 参考 | analysis | `design/analysis/mission-control/07-insights.md` | mission-control, legion, design-reference, lessons-learned, orchestration |
 | [[analysis-mission-control-index]] | Mission Control 分析文档索引 | analysis | `design/analysis/mission-control/index.md` | mission-control, nextjs, agent-dashboard, orchestration, sqlite |
+| [[analysis-pi-overview-001]] | pi-agent 项目架构总览 | design | `design/analysis/pi-agent/01-overview.md` | pi-agent, analysis, architecture, overview, monorepo |
+| [[analysis-pi-architecture-002]] | pi-agent 运行时架构与 Agent 主循环 | design | `design/analysis/pi-agent/02-architecture.md` | pi-agent, analysis, agent-loop, runtime, session |
+| [[analysis-pi-harness-003]] | pi-agent Harness 分层与下一代 AgentHarness 规范 | design | `design/analysis/pi-agent/03-harness.md` | pi-agent, analysis, harness, durability, state-machine, recovery |
+| [[analysis-pi-tools-004]] | pi-agent 工具系统与工具装载机制 | design | `design/analysis/pi-agent/04-tools.md` | pi-agent, analysis, tools, tool-registry, typebox |
+| [[analysis-pi-skills-005]] | pi-agent 技能系统与渐进式披露 | design | `design/analysis/pi-agent/05-skills.md` | pi-agent, analysis, skills, progressive-disclosure, prompt |
+| [[analysis-pi-extensions-006]] | pi-agent 扩展系统与 No-MCP 立场 | design | `design/analysis/pi-agent/06-extensions-mcp.md` | pi-agent, analysis, extensions, plugin, mcp, jiti |
+| [[analysis-pi-insights-007]] | pi-agent 洞察与 Legion 参考 | design | `design/analysis/pi-agent/07-insights.md` | pi-agent, analysis, insights, legion, design-reference |
+| [[analysis-pi-index]] | pi-agent 分析索引 | design | `design/analysis/pi-agent/index.md` | pi-agent, index, analysis |
 | [[analysis-sub2api-overview-001]] | Sub2API 项目概览 | analysis | `design/analysis/sub2api/01-overview.md` | sub2api, overview, analysis |
 | [[analysis-sub2api-architecture-001]] | Sub2API 架构分析 | analysis | `design/analysis/sub2api/02-architecture.md` | sub2api, architecture, analysis |
 | [[analysis-sub2api-database-001]] | Sub2API 数据库设计 | analysis | `design/analysis/sub2api/03-database.md` | sub2api, database, schema |
@@ -200,6 +221,7 @@ related_docs:
 | [[spec-know-vector-store-032]] | VectorStore 组件规范 | spec | `design/architecture/know_components/vector-store-spec.md` | component-spec, llm-wiki, vector, embedding, sqlite-vss |
 | [[spec-know-wiki-report-generator-060]] | WikiReportGenerator 组件规范 | spec | `design/architecture/know_components/wiki-report-generator-spec.md` | component-spec, llm-wiki, report, graphify, agent-context |
 | [[spec-know-wikilink-graph-033]] | WikiLinkGraph 组件规范 | spec | `design/architecture/know_components/wikilink-graph-spec.md` | component-spec, llm-wiki, wikilink, graph, sqlite |
+| [[design-legion-plugin-system-001]] | Legion 插件系统设计方案（借鉴 Cordis） | design | `design/architecture/legion-plugin-system.md` | legion, plugin, cordis, wasm, wazero, lifecycle, architecture |
 | [[design-llm-infra-abstraction-001]] | LLM 底层基础设施抽象化设计 | design | `design/architecture/llm-infrastructure-abstraction.md` | maas, sub2api, llm, abstraction, provider, relay, billing, architecture |
 | [[spec-component-async-task-provider-002]] | AsyncTaskProvider 组件规范 | spec | `design/architecture/maas_components/async-task-provider-spec.md` | component-spec, provider, async, video, audio, image, maas |
 | [[spec-component-audit-logger-062]] | AuditLogger 组件规范 | spec | `design/architecture/maas_components/audit-logger-spec.md` | component-spec, observability, audit, compliance, maas |
@@ -243,7 +265,10 @@ related_docs:
 | [[deepthinking-interop-009]] | Agent 互操作协议实现现状深度分析：A2A / ACP / MCP | deepthinking | `design/deepthinking/09-agent-interop-protocols-status.md` | agent-interop, a2a, acp, mcp, protocol, status, deep-design |
 | [[deepthinking-index]] | Legion 深度设计思考索引 | deepthinking | `design/deepthinking/index.md` | legion, deep-thinking, architecture, design, index |
 | [[reference-docs-index-001]] | 文档索引 | reference | `docs-index.md` | index, docs, navigation |
+| [[reference-agent-browser-continue-001]] | Agent 内置浏览器子系统 — 进度存档与接续指南 | reference | `design/architecture/agent-browser-design-continue-save.md` | agent, browser, handoff, progress, continue |
 | [[reference-worklog-20260624-001]] | 2026-06-24 工作日志 — legionAgentGUI Wails 桌面应用实现 | reference | `memory/2026-06-24-remaining-work-items.md` | worklog, wails, gui, legion-agent, react, tailwind |
+| [[reference-plugin-system-handoff-20260816-001]] | 接续入口 — 插件系统 / prompt cache 未完事项（2026-08-16） | reference | `memory/2026-08-16-plugin-system-handoff.md` | handoff, worklog, plugin-system, wasm, prompt-cache, deepseek, legion-agent |
+| [[reference-plugin-p1-handoff-20260817-001]] | 接续入口 — 插件系统 P1 及剩余事项（2026-08-17） | reference | `memory/2026-08-17-plugin-p1-handoff.md` | handoff, worklog, plugin-system, wasm, wazero, abi, legion-agent |
 | [[plans-platform-cross-module-dependencies-001]] | 跨模块依赖计划 | plan | `plans/00-platform/cross-module-dependencies.md` | plan, dependency, platform-registry |
 | [[plans-platform-governance-risk-observability-001]] | 三原则落地计划 | plan | `plans/00-platform/governance-risk-observability.md` | plan, observability, governance, risk |
 | [[plans-platform-index-000]] | 平台总计划索引 | index | `plans/00-platform/index.md` | plan, platform, roadmap, dependency |
@@ -320,6 +345,13 @@ related_docs:
 - [[analysis-deepseek-tui-storage-006]] — DeepSeek-TUI 会话管理与持久化
 - [[analysis-deepseek-tui-tools-005]] — DeepSeek-TUI 工具系统与 MCP
 - [[analysis-deepseek-tui-tui-003]] — DeepSeek-TUI 组件系统分析
+- [[analysis-dsh-architecture-002]] — DeepSeek Harness 系统架构
+- [[analysis-dsh-capabilities-004]] — DeepSeek Harness 核心能力
+- [[analysis-dsh-index]] — DeepSeek Harness 分析索引
+- [[analysis-dsh-insights-005]] — DeepSeek Harness 评估与对 Legion 的借鉴
+- [[analysis-dsh-overview-001]] — DeepSeek Harness 项目总览
+- [[analysis-dsh-plugin-system-003]] — DeepSeek Harness 插件系统
+- [[analysis-dsh-wasm-porting-006]] — dsh 插件模型向 Go+WASM 的移植分析与选型
 - [[analysis-evolver-adapters-004]] — 适配器、CLI 与集成分析
 - [[analysis-evolver-atp-003]] — ATP Agent 交易协议分析
 - [[analysis-evolver-datamodels-005]] — 数据模型与资产系统分析
@@ -358,6 +390,14 @@ related_docs:
 - [[analysis-newapi-middleware-005]] — 中间件与请求流程分析
 - [[analysis-newapi-modules-002]] — New API Go 模块功能分析
 - [[analysis-newapi-overview-001]] — New API 项目架构总览
+- [[analysis-pi-architecture-002]] — pi-agent 运行时架构与 Agent 主循环
+- [[analysis-pi-extensions-006]] — pi-agent 扩展系统与 No-MCP 立场
+- [[analysis-pi-harness-003]] — pi-agent Harness 分层与下一代 AgentHarness 规范
+- [[analysis-pi-index]] — pi-agent 分析索引
+- [[analysis-pi-insights-007]] — pi-agent 洞察与 Legion 参考
+- [[analysis-pi-overview-001]] — pi-agent 项目架构总览
+- [[analysis-pi-skills-005]] — pi-agent 技能系统与渐进式披露
+- [[analysis-pi-tools-004]] — pi-agent 工具系统与工具装载机制
 - [[analysis-sub2api-api-routes-001]] — Sub2API API 路由和中间件
 - [[analysis-sub2api-architecture-001]] — Sub2API 架构分析
 - [[analysis-sub2api-configuration-001]] — Sub2API 配置系统
@@ -391,9 +431,15 @@ related_docs:
 ### design
 
 - [[design-agent-runtime-009]] — Agent 运行时引擎技术设计
+- [[design-legion-plugin-system-001]] — Legion 插件系统设计方案（借鉴 Cordis）
 - [[design-agent-tiered-memory-001]] — 分层记忆注入设计（冻结快照 + 情景检索，移植 hermes-agent）
 - [[design-agent-interop-protocols-001]] — Agent 互操作协议对比：A2A vs ACP vs MCP（Legion 落地成本）
 - [[design-agent-browser-runtime-001]] — Agent 内置浏览器子系统技术 spec（legionAgent 接线）
+- [[design-agent-browser-view-ui-001]] — GUI 内置浏览器视图 UI 技术 spec（canvas 渲染 screencast）
+- [[design-agent-browser-takeover-001]] — Agent 内置浏览器接管模式技术 spec（人工回注输入 + 暂停 Agent）
+- [[design-gui-html-preview-panel-001]] — GUI HTML 预览面板技术 spec（iframe srcdoc 静态渲染）
+- [[design-gui-workspace-file-browser-001]] — GUI 工作目录文件浏览器技术 spec（文件树+类型分派预览+外部编辑器）
+- [[design-gui-generated-file-cards-001]] — GUI 对话生成文件卡片技术 spec（卡片+预览/下载/外部打开/复制链接）
 - [[design-llm-infra-abstraction-001]] — LLM 底层基础设施抽象化设计
 - [[design-maas-001]] — MaaS 模型调度层设计分析
 - [[design-maas-scheduling-008]] — MaaS 模型调度层技术设计
@@ -490,12 +536,14 @@ related_docs:
 
 ### reference
 
+- [[reference-agent-browser-continue-001]] — Agent 内置浏览器子系统 — 进度存档与接续指南
 - [[agent-component-parity-001]] — Agent Component Parity
 - [[agent-package-structure-001]] — Package Structure
 - [[agent-skill-registry-001]] — Legion Agent Skill Registry
 - [[agent-sqlite-schema-001]] — Legion Agent agent.db 数据结构
 - [[agent-traces-001]] — Legion Agent Trace Snapshot
 - [[bug-explore-hallucinated-paths-001]] — BUG 探索臆想 monorepo 路径（list_files/read_file 不存在文件）
+- [[bug-prompt-cache-backend-mismatch-001]] — BUG prompt cache 断点与后端不匹配（cache_control 对 DeepSeek 无效）
 - [[index-analysis-000]] — Claw Code 分析文档索引
 - [[reference-docs-index-001]] — 文档索引
 - [[reference-index-001]] — Legion Agent 参考手册索引
@@ -512,6 +560,8 @@ related_docs:
 - [[reference-legion-agent-user-manual-001]] — Legion Agent 使用手册总览
 - [[reference-maas-model-profiles-001]] — MaaS Model Profiles 参考手册
 - [[reference-multi-agent-collaboration-001]] — 多 Agent 协作参考手册
+- [[reference-plugin-p1-handoff-20260817-001]] — 接续入口 — 插件系统 P1 及剩余事项（2026-08-17）
+- [[reference-plugin-system-handoff-20260816-001]] — 接续入口 — 插件系统 / prompt cache 未完事项（2026-08-16）
 - [[reference-worklog-20260624-001]] — 2026-06-24 工作日志 — legionAgentGUI Wails 桌面应用实现
 
 ### spec
