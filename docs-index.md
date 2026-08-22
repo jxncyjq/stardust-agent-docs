@@ -268,7 +268,7 @@ related_docs:
 | [[reference-agent-browser-continue-001]] | Agent 内置浏览器子系统 — 进度存档与接续指南 | reference | `design/architecture/agent-browser-design-continue-save.md` | agent, browser, handoff, progress, continue |
 | [[reference-worklog-20260624-001]] | 2026-06-24 工作日志 — legionAgentGUI Wails 桌面应用实现 | reference | `memory/2026-06-24-remaining-work-items.md` | worklog, wails, gui, legion-agent, react, tailwind |
 | [[reference-plugin-system-handoff-20260816-001]] | 接续入口 — 插件系统 / prompt cache 未完事项（2026-08-16） | reference | `memory/2026-08-16-plugin-system-handoff.md` | handoff, worklog, plugin-system, wasm, prompt-cache, deepseek, legion-agent |
-| [[reference-plugin-p1-handoff-20260817-001]] | 接续入口 — 插件系统 P1 及剩余事项（2026-08-17） | reference | `memory/2026-08-17-plugin-p1-handoff.md` | handoff, worklog, plugin-system, wasm, wazero, abi, legion-agent |
+| [[reference-plugin-p1-handoff-20260817-001]] | 接续入口 — 插件系统 P1 实现就绪（2026-08-17） | reference | `memory/2026-08-17-plugin-p1-handoff.md` | handoff, worklog, plugin-system, wasm, wazero, abi, legion-agent |
 | [[plans-platform-cross-module-dependencies-001]] | 跨模块依赖计划 | plan | `plans/00-platform/cross-module-dependencies.md` | plan, dependency, platform-registry |
 | [[plans-platform-governance-risk-observability-001]] | 三原则落地计划 | plan | `plans/00-platform/governance-risk-observability.md` | plan, observability, governance, risk |
 | [[plans-platform-index-000]] | 平台总计划索引 | index | `plans/00-platform/index.md` | plan, platform, roadmap, dependency |
@@ -560,7 +560,7 @@ related_docs:
 - [[reference-legion-agent-user-manual-001]] — Legion Agent 使用手册总览
 - [[reference-maas-model-profiles-001]] — MaaS Model Profiles 参考手册
 - [[reference-multi-agent-collaboration-001]] — 多 Agent 协作参考手册
-- [[reference-plugin-p1-handoff-20260817-001]] — 接续入口 — 插件系统 P1 及剩余事项（2026-08-17）
+- [[reference-plugin-p1-handoff-20260817-001]] — 接续入口 — 插件系统 P1 实现就绪（2026-08-17）
 - [[reference-plugin-system-handoff-20260816-001]] — 接续入口 — 插件系统 / prompt cache 未完事项（2026-08-16）
 - [[reference-worklog-20260624-001]] — 2026-06-24 工作日志 — legionAgentGUI Wails 桌面应用实现
 

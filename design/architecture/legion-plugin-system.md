@@ -5,9 +5,9 @@ aliases: ["legion plugin system", "Legion 插件系统", "plugin lifecycle kerne
 type: "design"
 category: "design/architecture"
 tags: ["legion", "plugin", "cordis", "wasm", "wazero", "lifecycle", "architecture"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-08-16"
-updated: "2026-08-17"
+updated: "2026-08-22"
 author: "jxncyjq"
 status: "draft"
 parent: null
@@ -67,7 +67,7 @@ Cordis 的名词（Context / Fiber / Service / effect / Loader）都在回答插
 
 | Cordis 回答的问题 | Cordis 机制 | **Legion 对应设计** | 借鉴程度 |
 |---|---|---|---|
-| **系统现在想让哪些插件活着？** | Loader 维护目标插件树；配置删/禁/换 → 处置对应 Fiber；新实例启动失败可恢复旧条目 | `plugin.Loader`：读 `plugins.yaml` → 与实际实例 diff → 卸载/挂载；挂载失败回滚到旧实例并 fail-loud | **全抄** |
+| **系统现在想让哪些插件活着？** | Loader 维护目标插件树；配置删/禁/换 → 处置对应 Fiber；新实例启动失败可恢复旧条目 | `plugin.Loader`：读 `plugins.json` → 与实际实例 diff → 卸载/挂载；挂载失败回滚到旧实例并 fail-loud | **全抄** |
 | **一个插件创建的资源，退出时该找谁撤销？** | Fiber + `ctx.effect()` 登记 disposer；**所有权跟随调用方 Context**，即使资源放进别人的 Map | `lifecycle.Ledger`：`Add(owner, dispose)` / `DisposeOwner(owner)` 逆序执行；host function 注册的资源，owner = 发起注册的插件实例 | **全抄**（含所有权规则） |
 | **某项能力没了，哪些依赖它的插件也不能继续跑？** | Service + `inject`：提供方消失 → 重查 Fiber → 让不满足的 Consumer 退出 → 新实现就绪再激活 | **不实现**。改用「一切走注册表路径」，卸载只删注册项，调用时现取当前实现 | **不抄，绕开** |
 
@@ -113,7 +113,7 @@ Cordis 的名词（Context / Fiber / Service / effect / Loader）都在回答插
 ```mermaid
 flowchart TD
   subgraph L4["④ Loader 层 — 谁该活着"]
-    manifest["plugins.yaml 目标态"]
+    manifest["plugins.json 目标态"]
     loader["plugin.Loader<br/>diff → 卸载/挂载 → 失败回滚"]
   end
   subgraph L3["③ 插件面 — WASM guest"]
@@ -237,7 +237,7 @@ type Loader struct { /* ledger *lifecycle.Ledger; host *Host; ... */ }
 func (l *Loader) Apply(ctx context.Context, manifest Manifest) error
 ```
 
-- 目标态来自 `plugins.yaml`（条目：name / source / version / enabled / config / capabilities）。
+- 目标态来自 `plugins.json`（条目：name / source / enabled / grant / tools / config）。**清单一律 JSON，不用 YAML**：本仓没有 YAML 依赖，主配置 `agent.json` 也走 `encoding/json`，为一份部署清单引入一个新的解析器等于给「插件代码从哪来」这条信任链多加一个依赖。
 - **条目 `enabled: false` 与条目被删除，行为一致**：卸载。
 - **挂载失败必须回滚到旧实例**，与 Cordis Loader 一致；失败原因（哪一步、已回滚哪些）进事件流（§8）。
 - 触发方式两种：启动期一次 `Apply`；运行期由显式命令/HTTP 触发（**先不做文件 watcher**——热重载的复杂度留到确有需求时）。
@@ -351,48 +351,75 @@ func (h *Host) activate(ctx context.Context, spec Spec) (err error) {
 
 ```text
 my-plugin/
-  plugin.yaml      # 清单：身份、能力声明、贡献物声明
+  plugin.json      # 清单：身份、能力声明、贡献物声明
   plugin.wasm      # 编译产物
 ```
 
-`plugin.yaml`（**由 host 解析，不执行任何插件代码**）：
+**两份清单都是 JSON，不是 YAML**：本仓没有 YAML 依赖，主配置 `agent.json` 走 `encoding/json`，插件清单再引一个解析器，等于给「插件代码从哪来、被授了什么」这条信任链多加一个依赖。代价是 JSON 不能写注释，所以下面示例里的说明改成正文（`plugin.json` 各字段的完整校验规则见 `internal/plugin/manifest`）。
 
-```yaml
-name: legion-jira            # 全局唯一
-version: 1.2.0               # semver
-abi: 1                       # 本插件编译时依据的 ABI 版本
-sha256: "9f2c…"              # plugin.wasm 的摘要，加载时校验
-capabilities:                # 声明所需能力，见 §6.4
-  - log
-  - http
-  - kv
-limits:                      # 上限申请，host 取 min(申请, 部署上限)
-  timeout_ms: 5000
-  max_memory_pages: 256      # 256 * 64KiB = 16MiB
-  max_instances: 2
-network:
-  allowed_hosts: ["jira.example.com"]
-filesystem:
-  allowed_paths: []          # 空 = 不授予任何路径
+`plugin.json`（**由 host 解析，不执行任何插件代码**）：
+
+```json
+{
+  "name": "legion-jira",
+  "version": "1.2.0",
+  "abi": 1,
+  "sha256": "9f2c…",
+  "capabilities": ["log", "http", "kv"],
+  "limits": {
+    "timeout_ms": 5000,
+    "max_memory_pages": 256,
+    "max_instances": 2
+  },
+  "network": { "allowed_hosts": ["jira.example.com"] },
+  "filesystem": { "allowed_paths": [] },
+  "tools": [
+    {
+      "name": "jira_search",
+      "description": "搜索 Jira issue",
+      "group": "plugins",
+      "risk_level": "low",
+      "timeout_ms": 3000
+    }
+  ]
+}
 ```
 
-`plugins.yaml`（部署侧目标态，Loader 读它，见 §5.4）：
+- `name` 全局唯一，`version` 用 semver，`abi` 是本插件编译时依据的 ABI 版本（当前只接受 `1`）。
+- `sha256` 是 `plugin.wasm` 的摘要，加载时逐字节校验；对不上直接拒绝加载。
+- `capabilities` 声明所需能力（见 §6.4）；`limits` 是**上限申请**，host 取 min(申请, 部署上限)，`max_memory_pages: 256` 即 256 × 64KiB = 16MiB。
+- `filesystem.allowed_paths` 为空 = 不授予任何路径。
+- `tools` 是贡献物声明，每项的 `name` / `group` / 正数 `timeout_ms` 必填——`group` 决定它在能力目录里的位置，`timeout_ms` 是进入 guest 的唯一时间上界。
 
-```yaml
-plugins:
-  - name: legion-jira
-    source: ./plugins/legion-jira      # 目录或 .tar
-    enabled: true
-    grant:                              # 部署授权，与插件声明取交集
-      capabilities: [log, http]         # 注意：未授 kv
-      allowed_hosts: ["jira.example.com"]
-    config:                             # 传给插件的配置，纯 JSON 数据
-      project_key: "OPS"
+`plugins.json`（部署侧目标态，Loader 读它，见 §5.4）：
+
+```json
+{
+  "plugins": [
+    {
+      "name": "legion-jira",
+      "source": "./plugins/legion-jira",
+      "enabled": true,
+      "grant": {
+        "capabilities": ["log", "http"],
+        "allowed_hosts": ["jira.example.com"]
+      },
+      "tools": [{ "name": "jira_search" }],
+      "config": { "project_key": "OPS" }
+    }
+  ]
+}
 ```
+
+- `source` 是插件包目录，**相对部署根解析**：绝对路径与走出根的 `..` 一律拒绝，因为「插件的 wasm 从哪读」是一次信任决定。
+- `grant` 是部署授权，与插件自己的声明取交集；上例故意**未授 kv**，见下。
+- `tools` 是部署**接受**哪些贡献物：只有列进来的工具才会注册，列了插件没声明的名字则拒绝加载（typo 远比「无用的接受」常见）。
+- `enabled` 缺省为 `true`；写成 `false` 与把条目删掉是同一个动作：卸载。
+- `config` 原样透传给插件，本层不解析它的 schema。
 
 **声明 ⊄ 授权 时的行为：fail-loud 拒绝加载**，错误明确指出缺哪个能力（`plugin legion-jira requires capability "kv" which the deployment does not grant`）。不静默降级——一个以为自己有 KV 的插件半残地跑起来，比不跑更糟。
 
-`plugin.wasm` 里还有一个**权威**清单：`plugin_manifest()` 导出返回的 protobuf。`plugin.yaml` 是给人和 Loader 看的，`plugin_manifest()` 是给 host 校验的；**两者不一致 = 拒绝加载**（防止清单谎报能力或贡献物）。
+`plugin.wasm` 里还有一个**权威**清单：`plugin_manifest()` 导出返回的 protobuf。`plugin.json` 是给人和 Loader 看的，`plugin_manifest()` 是给 host 校验的；**两者不一致 = 拒绝加载**（防止清单谎报能力或贡献物）。
 
 ### 6.3 ABI v1
 
@@ -497,7 +524,7 @@ type pool struct {
 ```mermaid
 stateDiagram-v2
     [*] --> Discovered: Loader 读到清单条目
-    Discovered --> Verified: sha256 + plugin.yaml 解析通过
+    Discovered --> Verified: sha256 + plugin.json 解析通过
     Verified --> Failed: 摘要不符 / 清单非法
     Verified --> Bound: 能力声明 ∩ 部署授权成功
     Bound --> Failed: 声明的能力未获授权
@@ -694,8 +721,9 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 |---|---|---|---|
 | ~~**P0 生命周期内核**~~（纯 Go，无 WASM） | `lifecycle.Ledger`；`Registry` 注册返回 disposer + 加锁；`Subset`/`Without` 改视图；owner 绑定与诊断快照 | ✅ **已交付** PR [#80](https://github.com/jxncyjq/stardust-agent-server/pull/80) | 缺陷 A/B/C 全部修掉，快照幽灵消灭 |
 | ~~**P0.5 能力面契约**~~ | 四条接线契约（§6.12）；其中 gateable 动态合并与审计归因**已实现** | ✅ 契约定稿 + 2/4 已落地（同 PR #80） | 插件宿主动工前的前置条件已就位 |
-| **P1 WASM 插件宿主** | wazero 宿主 + 自研 ABI v1（§6.3）；`pkg/legionplugin` guest SDK；能力白名单（§6.4）；实例池；分步激活回滚；在途收敛 | 独立 plan（未开始） | 第一个可挂载/卸载的工具插件跑通 |
-| **P2 Loader 与依赖收敛** | `plugin.Loader` + `plugins.yaml`；三态收敛（§5.5）；热加载；任务边界生效（§6.12 契约 4） | 独立 plan（未开始） | 目标状态声明式管理，热更不打断任务 |
+| ~~**P1 WASM 插件宿主**~~ | wazero 宿主 + 自研 ABI v1（§6.3）；`pkg/legionplugin` guest SDK；能力白名单（§6.4）；实例池；分步激活回滚；在途收敛 | ✅ **已交付** PR [#81](https://github.com/jxncyjq/stardust-agent-server/pull/81) | 第一个可挂载/卸载的工具插件跑通 |
+| ~~**P2-A4a Loader 与任务边界**~~ | `plugin.Loader` + `plugins.json` 目标态收敛（§5.4）；启动期 `Apply` + 运行期 `agent plugins status\|reload`；挂载失败回滚到旧实例（§5.6）；任务边界生效（§6.12 契约 4） | ✅ **已交付** 分支 `feat/plugin-loader-task-boundary`（PR 待开，整支审查后决定编号） | 部署方改一份 `plugins.json` 就能增删插件，热更不打断在途任务 |
+| **P2-A4b 依赖收敛** | 三态收敛 `Active`/`Suspended`/`Unloaded`（§5.5）与级联挂起；前置是 `plugin.json` 增加 `requires:` 列出所依赖的工具名 | 独立 plan（未开始） | 依赖不满足的插件不再「半残地活着」被模型看见 |
 | **P3 分发面** | 签名、OCI/HTTP 来源、`legion plugin` CLI、GUI 授权同意流 | 独立 plan（未开始） | 第三方插件可安全分发与准入 |
 | **P4 插件面扩展 + 可观测** | 策略钩子（pre/post）、prompt 段、渲染投影；§8 全部事件与 `plugins status` | 独立 plan（未开始） | 插件可参与策略与提示词，排查闭环 |
 
