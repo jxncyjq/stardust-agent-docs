@@ -5,9 +5,9 @@ aliases: ["legion plugin system", "Legion 插件系统", "plugin lifecycle kerne
 type: "design"
 category: "design/architecture"
 tags: ["legion", "plugin", "cordis", "wasm", "wazero", "lifecycle", "architecture"]
-version: "1.2.0"
+version: "1.3.0"
 created: "2026-08-16"
-updated: "2026-08-22"
+updated: "2026-08-23"
 author: "jxncyjq"
 status: "draft"
 parent: null
@@ -250,7 +250,7 @@ func (l *Loader) Apply(ctx context.Context, manifest Manifest) error
 
 **错在哪：** guest 拿不到 host 引用，只免除了「卸载后旧引用还在被调用」（幽灵），**不免除「依赖不满足时插件仍在运行」（半残）**。B 依赖 A 提供的能力，A 被卸载后 B 的每次调用都会拿到 `UNAVAILABLE`——它不是幽灵，是一个还活着、还在被模型看见、但每次都失败的工具。这正是 Cordis 第三问要回答的。
 
-**结论：要做，但可以简化成三态**（`Active` / `Suspended` / `Unloaded`），不需要 DSH 的完整 Service 拓扑：
+**结论：要做，但可以简化成三态**（`Active` / `Suspended` / `Unloaded`），不需要 DSH 的完整 Service 拓扑。✅ **已实现**（P2-A4b，见 §9 路线图）：
 
 | 事件 | 动作 |
 |---|---|
@@ -261,6 +261,13 @@ func (l *Loader) Apply(ctx context.Context, manifest Manifest) error
 spike 已验证机制可行：12 个用例 + 5 项变异全过，含三级级联挂起、热替换时的在途调用、激活失败回滚。
 
 `Suspended` 而非直接卸载的理由：依赖方的不可用往往是暂时的（热替换的中间态就是一次「卸载再加载」），保留状态让恢复是重新注册而不是重新初始化。
+
+插件用 `plugin.json` 的 `requires:` 列出自己调用的工具名，收敛在每次 `Apply` 的最后一步整体求解一次：该挂起的先挂起（依赖方先于提供方），该恢复的后恢复（提供方先于依赖方），整条链在**一次** `Apply` 内收敛完毕，不要求运维「再跑一次让它稳定」。挂起态在 `agent plugins status` 里点名卡在哪个工具，并区分「没人提供」与「提供者自己也挂起了」（级联）。
+
+**两条实现口径**（读代码才看得出来，但直接决定运维怎么判断）：
+
+- **满足与否看「这个工具名解析得出来吗」，不看「有没有别的插件声明提供它」。** 名字由某个**已挂载插件**提供时，由依赖图定夺，而不是查注册表——本轮即将被挂起的插件此刻还注册着，照注册表回答会让级联每次都少传一跳；**没有任何已挂载插件提供**的名字则直接查注册表，解析得到就算满足。于是 **host 内建工具天然满足**（插件的 `call_tool` 本来就是走这张注册表出去的），只依赖内建工具的插件不会因为别的插件增删而被挂起；反过来，内建工具若被撤销，依赖它的插件同样会被挂起并点名该工具。
+- **依赖成环是 error，且不牵连已挂载的插件。** 清单里出现 A→B→A 这类环时，收敛拒绝求解，把环上的插件名点进 `Apply` 返回的错误里，并且**一个已挂载插件都不动**：不挂起、不恢复、不卸载，贡献物原样留在注册表与 gateable 目录里。成环是 operator 的清单数据错误，不是把正在工作的插件拆掉的理由。（环上的条目本轮仍会被挂载——环是在收敛最后一步才发现的——只是没有任何插件因此改变状态。）
 
 对应地，仍必须封死两个会把「幽灵」问题重新引入的口子（**列为架构不变量，写进 review checklist**）：
 
@@ -723,7 +730,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**P0.5 能力面契约**~~ | 四条接线契约（§6.12）；其中 gateable 动态合并与审计归因**已实现** | ✅ 契约定稿 + 2/4 已落地（同 PR #80） | 插件宿主动工前的前置条件已就位 |
 | ~~**P1 WASM 插件宿主**~~ | wazero 宿主 + 自研 ABI v1（§6.3）；`pkg/legionplugin` guest SDK；能力白名单（§6.4）；实例池；分步激活回滚；在途收敛 | ✅ **已交付** PR [#81](https://github.com/jxncyjq/stardust-agent-server/pull/81) | 第一个可挂载/卸载的工具插件跑通 |
 | ~~**P2-A4a Loader 与任务边界**~~ | `plugin.Loader` + `plugins.json` 目标态收敛（§5.4）；启动期 `Apply` + 运行期 `agent plugins status\|reload`；挂载失败回滚到旧实例（§5.6）；任务边界生效（§6.12 契约 4） | ✅ **已交付** 分支 `feat/plugin-loader-task-boundary`（PR 待开，整支审查后决定编号） | 部署方改一份 `plugins.json` 就能增删插件，热更不打断在途任务 |
-| **P2-A4b 依赖收敛** | 三态收敛 `Active`/`Suspended`/`Unloaded`（§5.5）与级联挂起；前置是 `plugin.json` 增加 `requires:` 列出所依赖的工具名 | 独立 plan（未开始） | 依赖不满足的插件不再「半残地活着」被模型看见 |
+| ~~**P2-A4b 依赖收敛**~~ | 三态收敛 `Active`/`Suspended`/`Unloaded`（§5.5）与级联挂起；`plugin.json` 增加 `requires:` 列出所依赖的工具名；`plugins status` 点名挂起原因并区分级联 | ✅ **已交付** 分支 `feat/plugin-dependency-convergence`（PR 待开，整支审查后决定编号） | 依赖不满足的插件不再「半残地活着」被模型看见 |
 | **P3 分发面** | 签名、OCI/HTTP 来源、`legion plugin` CLI、GUI 授权同意流 | 独立 plan（未开始） | 第三方插件可安全分发与准入 |
 | **P4 插件面扩展 + 可观测** | 策略钩子（pre/post）、prompt 段、渲染投影；§8 全部事件与 `plugins status` | 独立 plan（未开始） | 插件可参与策略与提示词，排查闭环 |
 
