@@ -684,7 +684,7 @@ WASM 宿主动工前必须先定死的四条。它们与载体无关，且其中
 | 能力授权 | 实例化时绑定 host function 子集；**声明 ∩ 部署白名单**取交集，声明多于白名单 → 激活失败 fail-loud |
 | 路径/网络 | `allowed_paths` / `allowed_hosts`，与现有沙箱策略同源（不得让插件绕过工作区根） |
 | 审计 | 插件发起的工具调用照常经 `tool.Registry.Execute`，权限、审计、超时、人工审批门全在原路径上 |
-| 供应链 | Ed25519 分离签名 `plugin.sig` 覆盖 `plugin.json` 的**原始字节**；`plugin.json` 里的 sha256 逐字节校验 `plugin.wasm`，于是一个签名传递性地锁住清单与二进制（改任一样都会被拒）。信任集合是本地 keyring（`plugins.keyring`，只放公钥）；**默认强制**——`require_signature` 不写即为「必须验签」，要关必须显式写 `false`。验签失败走既有失败通道，`agent plugins status` 里可见原因。远程来源拉取仍列为后续议题（见 §9 A5b） |
+| 供应链 | Ed25519 分离签名 `plugin.sig` 覆盖 `plugin.json` 的**原始字节**；`plugin.json` 里的 sha256 逐字节校验 `plugin.wasm`，于是一个签名传递性地锁住清单与二进制（改任一样都会被拒）。信任集合是本地 keyring（`plugins.keyring`，只放公钥）；**默认强制**——`require_signature` 不写即为「必须验签」，要关必须显式写 `false`。验签失败走既有失败通道，`agent plugins status` 里可见原因。**远程来源**：`source` 可以写 HTTPS tarball，包用 `tar` 打——`git archive` 的产物带 `pax_global_header` 条目，会被整包拒绝；条目**必须**声明 `digest: "sha256:…"`，拉取时按流逐字节校验，对不上的字节一个也不落盘。校验通过的包按摘要内容寻址地缓存在 `plugins.cache/sha256/<digest>/`，命中即用、**完全不联网**，于是重启与离线部署都不依赖网络。解包拒绝路径穿越、非普通文件与解压炸弹，且拒的是**整个包**而不是跳过单个条目（「跳过一条」正是一个恶意包变成「合法包少一个文件」的路子）。**摘要与签名是两道各自独立的门**：摘要回答「拿到的字节是不是部署方点名的那串字节」，签名回答「这串字节是不是受信任密钥签发的」，任何一道都替代不了另一道——摘要过了的包照样会因验签失败被拒挂。明文 `http://` 只在 `plugins.allow_insecure_sources: true` 下可用，**缺省拒绝**（装配期就失败，错误点名条目、URL 与这个开关），开着时每条明文条目装配期都打一条点名它的 Warn；它丢的是**机密性与可用性**（下载可被旁观、可被阻断，也可能被喂一个旧的但确实合法签名的版本），**不丢完整性**——摘要仍逐字节把守，签名仍照验。**仅供调试** |
 
 **不把 manifest 的能力声明当安全边界**——它只是「插件想要什么」，真正的边界是实例化时 host 绑定了什么。
 
@@ -732,9 +732,11 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**P2-A4a Loader 与任务边界**~~ | `plugin.Loader` + `plugins.json` 目标态收敛（§5.4）；启动期 `Apply` + 运行期 `agent plugins status\|reload`；挂载失败回滚到旧实例（§5.6）；任务边界生效（§6.12 契约 4） | ✅ **已交付** 分支 `feat/plugin-loader-task-boundary`（PR 待开，整支审查后决定编号） | 部署方改一份 `plugins.json` 就能增删插件，热更不打断在途任务 |
 | ~~**P2-A4b 依赖收敛**~~ | 三态收敛 `Active`/`Suspended`/`Unloaded`（§5.5）与级联挂起；`plugin.json` 增加 `requires:` 列出所依赖的工具名；`plugins status` 点名挂起原因并区分级联 | ✅ **已交付** 分支 `feat/plugin-dependency-convergence`（PR 待开，整支审查后决定编号） | 依赖不满足的插件不再「半残地活着」被模型看见 |
 | ~~**P3-A5a 包签名与信任**~~ | Ed25519 分离签名 `plugin.sig`（覆盖 `plugin.json` 原始字节，经其中 sha256 传递覆盖 `.wasm`）；本地 keyring 信任集合；部署策略默认强制、装配期 fail-loud（要求验签却无 keyring → serve 装配失败，绝不降级为「不验」）；`agent plugins reload` 拒绝与在跑策略不一致的签名策略；`agent plugins keygen\|sign` 两条运维命令 | ✅ **已交付** 分支 `feat/plugin-signature-verification`（PR 待开，整支审查后决定编号） | 只有受信任密钥签发的插件才准挂载 |
-| **P3-A5b 远程来源** | OCI/HTTP 拉取、内容寻址缓存、离线/镜像策略 | 独立 plan（未开始） | 插件不必先落到部署方磁盘上 |
+| ~~**P3-A5b 远程来源**~~ | HTTPS tarball 拉取：条目写 `source` + 强制 `sha256:` 摘要；按流校验、不符不落盘；内容寻址缓存 `plugins.cache/sha256/<digest>/`，命中不联网；解包拒绝路径穿越 / 非普通文件 / 解压炸弹，且整包拒绝；`allow_insecure_sources` 只放开 scheme，缺省拒绝明文、开着则每条打 Warn；摘要与签名是两道独立的门（见 §7） | ✅ **已交付** 分支 `feat/plugin-remote-source`（PR 待开，整支审查后决定编号） | 插件不必先落到部署方磁盘上，重启与离线部署不依赖网络 |
 | **P3-A5c 准入体验** | `legion plugin install\|search` CLI、GUI 授权同意流 | 独立 plan（未开始） | 第三方插件的安装与授权对使用者可见可控 |
 | **P4 插件面扩展 + 可观测** | 策略钩子（pre/post）、prompt 段、渲染投影；§8 全部事件与 `plugins status` | 独立 plan（未开始） | 插件可参与策略与提示词，排查闭环 |
+
+**A5b 仍未做**：OCI registry 传输——`source` 目前只认 `http(s)://` tarball，OCI 一条都没实现；镜像与代理配置、缓存清理与容量上限也不在内。`legion plugin install|search` 与 GUI 同意流见 A5c。
 
 **P0 的实施计划**：`legionAgent/docs/superpowers/plans/2026-08-16-plugin-lifecycle-kernel.md`（已执行完毕）。
 
@@ -763,7 +765,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 - Fiber 树 / Context 层级覆盖（Legion 用扁平 scope id + 现有 `toolauth`）
 - 文件 watcher 式热重载（P1 只做显式触发的 `Apply`）
 - 用 `inject`/manifest 声明充当安全隔离
-- 插件签名、远程仓库、市场（独立议题）
+- ~~插件签名~~、~~远程来源~~ — **两条判断都已推翻**：包签名见 §9 A5a、远程 HTTPS tarball 见 §9 A5b，均已交付；仍不做的是 OCI registry 传输与插件市场
 
 <!-- @end-section -->
 
