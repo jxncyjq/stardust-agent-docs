@@ -684,7 +684,7 @@ WASM 宿主动工前必须先定死的四条。它们与载体无关，且其中
 | 能力授权 | 实例化时绑定 host function 子集；**声明 ∩ 部署白名单**取交集，声明多于白名单 → 激活失败 fail-loud |
 | 路径/网络 | `allowed_paths` / `allowed_hosts`，与现有沙箱策略同源（不得让插件绕过工作区根） |
 | 审计 | 插件发起的工具调用照常经 `tool.Registry.Execute`，权限、审计、超时、人工审批门全在原路径上 |
-| 供应链 | v1 只加载本地清单指定的 `.wasm`，记录 sha256；签名与远程分发列为后续议题 |
+| 供应链 | Ed25519 分离签名 `plugin.sig` 覆盖 `plugin.json` 的**原始字节**；`plugin.json` 里的 sha256 逐字节校验 `plugin.wasm`，于是一个签名传递性地锁住清单与二进制（改任一样都会被拒）。信任集合是本地 keyring（`plugins.keyring`，只放公钥）；**默认强制**——`require_signature` 不写即为「必须验签」，要关必须显式写 `false`。验签失败走既有失败通道，`agent plugins status` 里可见原因。远程来源拉取仍列为后续议题（见 §9 A5b） |
 
 **不把 manifest 的能力声明当安全边界**——它只是「插件想要什么」，真正的边界是实例化时 host 绑定了什么。
 
@@ -731,7 +731,9 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**P1 WASM 插件宿主**~~ | wazero 宿主 + 自研 ABI v1（§6.3）；`pkg/legionplugin` guest SDK；能力白名单（§6.4）；实例池；分步激活回滚；在途收敛 | ✅ **已交付** PR [#81](https://github.com/jxncyjq/stardust-agent-server/pull/81) | 第一个可挂载/卸载的工具插件跑通 |
 | ~~**P2-A4a Loader 与任务边界**~~ | `plugin.Loader` + `plugins.json` 目标态收敛（§5.4）；启动期 `Apply` + 运行期 `agent plugins status\|reload`；挂载失败回滚到旧实例（§5.6）；任务边界生效（§6.12 契约 4） | ✅ **已交付** 分支 `feat/plugin-loader-task-boundary`（PR 待开，整支审查后决定编号） | 部署方改一份 `plugins.json` 就能增删插件，热更不打断在途任务 |
 | ~~**P2-A4b 依赖收敛**~~ | 三态收敛 `Active`/`Suspended`/`Unloaded`（§5.5）与级联挂起；`plugin.json` 增加 `requires:` 列出所依赖的工具名；`plugins status` 点名挂起原因并区分级联 | ✅ **已交付** 分支 `feat/plugin-dependency-convergence`（PR 待开，整支审查后决定编号） | 依赖不满足的插件不再「半残地活着」被模型看见 |
-| **P3 分发面** | 签名、OCI/HTTP 来源、`legion plugin` CLI、GUI 授权同意流 | 独立 plan（未开始） | 第三方插件可安全分发与准入 |
+| ~~**P3-A5a 包签名与信任**~~ | Ed25519 分离签名 `plugin.sig`（覆盖 `plugin.json` 原始字节，经其中 sha256 传递覆盖 `.wasm`）；本地 keyring 信任集合；部署策略默认强制、装配期 fail-loud（要求验签却无 keyring → serve 装配失败，绝不降级为「不验」）；`agent plugins reload` 拒绝与在跑策略不一致的签名策略；`agent plugins keygen\|sign` 两条运维命令 | ✅ **已交付** 分支 `feat/plugin-signature-verification`（PR 待开，整支审查后决定编号） | 只有受信任密钥签发的插件才准挂载 |
+| **P3-A5b 远程来源** | OCI/HTTP 拉取、内容寻址缓存、离线/镜像策略 | 独立 plan（未开始） | 插件不必先落到部署方磁盘上 |
+| **P3-A5c 准入体验** | `legion plugin install\|search` CLI、GUI 授权同意流 | 独立 plan（未开始） | 第三方插件的安装与授权对使用者可见可控 |
 | **P4 插件面扩展 + 可观测** | 策略钩子（pre/post）、prompt 段、渲染投影；§8 全部事件与 `plugins status` | 独立 plan（未开始） | 插件可参与策略与提示词，排查闭环 |
 
 **P0 的实施计划**：`legionAgent/docs/superpowers/plans/2026-08-16-plugin-lifecycle-kernel.md`（已执行完毕）。
