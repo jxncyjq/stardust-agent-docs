@@ -688,6 +688,8 @@ WASM 宿主动工前必须先定死的四条。它们与载体无关，且其中
 
 **不把 manifest 的能力声明当安全边界**——它只是「插件想要什么」，真正的边界是实例化时 host 绑定了什么。
 
+**安装与授权是两件分开的事**（见 §9 A5c）：`agent plugins install` 只把一个已验证的包登记进 `plugins.json`——记它的来源（`source`）与摘要（`digest`）——**默认不**替运维做任何授权决定；授权默认是之后一次显式动作（`agent plugins grant`），撤销也是（`agent plugins deny`）。两处措辞都要照字面读：**摘要永远校验，签名只在部署要求验签时才校验**（`plugins.require_signature` 为 false 时 `LoadPackage` 整段跳过签名检查，此时 install 自己会打印 `signature NOT verified`）；而**默认**零授权的唯一例外是显式的 `install --grant`，它把「取回」与「授权」压进同一条命令，一步写成 `enabled: true`——那仍是运维的显式表态，不是命令替他做的决定。落盘编码上这一点是可分辨的：一条 `enabled: false` 且**完全没有 `grant` 字段**的条目，意味着「已登记、从来没人决定过要不要授权它」；这与一条**曾经**被显式授权、随后又被 `deny` 撤销的条目——同样 `enabled: false`，但 **`grant` 字段仍然存在**（只是 `capabilities` 被清空）——是两种不同的历史，且故意在 JSON 里长得不一样。`agent plugins status` 把前者显示成 `unauthorized`（配一句「用 `plugins grant` 授权」的下一步提示），后者显示成 `disabled`，不把「还没被允许」和「运维不想要它跑」混为一谈——这两种状态下运维要做的下一步完全不同，一行永远显示失败的状态行只会训练人忽略状态。
+
 <!-- @end-section -->
 
 <!-- @section: observability -->
@@ -733,10 +735,11 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**P2-A4b 依赖收敛**~~ | 三态收敛 `Active`/`Suspended`/`Unloaded`（§5.5）与级联挂起；`plugin.json` 增加 `requires:` 列出所依赖的工具名；`plugins status` 点名挂起原因并区分级联 | ✅ **已交付** 分支 `feat/plugin-dependency-convergence`（PR 待开，整支审查后决定编号） | 依赖不满足的插件不再「半残地活着」被模型看见 |
 | ~~**P3-A5a 包签名与信任**~~ | Ed25519 分离签名 `plugin.sig`（覆盖 `plugin.json` 原始字节，经其中 sha256 传递覆盖 `.wasm`）；本地 keyring 信任集合；部署策略默认强制、装配期 fail-loud（要求验签却无 keyring → serve 装配失败，绝不降级为「不验」）；`agent plugins reload` 拒绝与在跑策略不一致的签名策略；`agent plugins keygen\|sign` 两条运维命令 | ✅ **已交付** 分支 `feat/plugin-signature-verification`（PR 待开，整支审查后决定编号） | 只有受信任密钥签发的插件才准挂载 |
 | ~~**P3-A5b 远程来源**~~ | HTTPS tarball 拉取：条目写 `source` + 强制 `sha256:` 摘要；按流校验、不符不落盘；内容寻址缓存 `plugins.cache/sha256/<digest>/`，命中不联网；解包拒绝路径穿越 / 非普通文件 / 解压炸弹，且整包拒绝；`allow_insecure_sources` 只放开 scheme，缺省拒绝明文、开着则每条打 Warn；摘要与签名是两道独立的门（见 §7） | ✅ **已交付** 分支 `feat/plugin-remote-source`（PR 待开，整支审查后决定编号） | 插件不必先落到部署方磁盘上，重启与离线部署不依赖网络 |
-| **P3-A5c 准入体验** | `legion plugin install\|search` CLI、GUI 授权同意流 | 独立 plan（未开始） | 第三方插件的安装与授权对使用者可见可控 |
+| ~~**P3-A5c 准入体验**~~ | `agent plugins install`：拉取、验摘要、验签（后者仅在部署要求时）、登记进 `plugins.json`，**默认零授权**（`enabled: false`，无 `grant` 字段；显式 `--grant` 可一步授权）；`agent plugins grant\|deny` 是授权/撤销的显式动作，只接受插件声明过的能力；`agent plugins status` 区分 `unauthorized`（从没人决定过）与 `disabled`（决定过、关了），各自给出可操作的下一步 | ✅ **已交付** 分支 `feat/plugin-install-consent`（PR 待开，整支审查后决定编号） | 「装了」与「能跑」不再是一件事，第三方插件的安装与授权对运维可见可控 |
+| **GUI 授权同意流**（下一期） | 图形化呈现 A5c 交付的 `unauthorized`/`disabled` 区分，做一键授权/撤销；直接消费 A5c 的 `plugins.json` 编码与 CLI 语义，不必再造一遍 | 独立 plan（未开始） | 第三方插件的授权决定不必再走命令行 |
 | **P4 插件面扩展 + 可观测** | 策略钩子（pre/post）、prompt 段、渲染投影；§8 全部事件与 `plugins status` | 独立 plan（未开始） | 插件可参与策略与提示词，排查闭环 |
 
-**A5b 仍未做**：OCI registry 传输——`source` 目前只认 `http(s)://` tarball，OCI 一条都没实现；镜像与代理配置、缓存清理与容量上限也不在内。`legion plugin install|search` 与 GUI 同意流见 A5c。
+**A5b 仍未做**：OCI registry 传输——`source` 目前只认 `http(s)://` tarball，OCI 一条都没实现；镜像与代理配置、缓存清理与容量上限也不在内。`agent plugins install|grant|deny` 已在 A5c 交付；本仓没有 registry/索引概念，§10 也明确排除插件市场，所以 A5c **不做** `search`。GUI 授权同意流是下一期，见上表，消费的正是 A5c 交付的语义。
 
 **P0 的实施计划**：`legionAgent/docs/superpowers/plans/2026-08-16-plugin-lifecycle-kernel.md`（已执行完毕）。
 
