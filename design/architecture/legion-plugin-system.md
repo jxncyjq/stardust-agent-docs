@@ -745,7 +745,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 
 **A5b 仍未做**：OCI registry 传输——`source` 目前只认 `http(s)://` tarball，OCI 一条都没实现；镜像与代理配置、缓存清理与容量上限也不在内。`agent plugins install|grant|deny` 已在 A5c 交付；本仓没有 registry/索引概念，§10 也明确排除插件市场，所以 A5c **不做** `search`。
 
-**GUI 授权同意流已交付，且明确不包含以下几件事**：GUI 里装插件（`install` 仍只有 CLI 一条路）；插件 `search` 与市场；OCI registry 传输；插件状态的实时推送（GUI 靠轮询/手动刷新 `GET /v1/plugins`，没有 WebSocket/SSE）；密钥吊销与透明日志。以上都不在这期范围内，等它们真的做了再改这段。本期同样没有做过一次真机验证——证据全部来自单测、端到端测试与真 wasm 夹具；六期下来从没有第三方插件在真机上挂载过，这期也不改变这一点。
+**GUI 授权同意流已交付，且明确不包含以下几件事**：GUI 里装插件（`install` 仍只有 CLI 一条路）；插件 `search` 与市场；OCI registry 传输；插件状态的实时推送（GUI 只在打开面板时取一次 `GET /v1/plugins`，此后靠手动点刷新，外加 grant/deny 响应自身带回的那一行就地更新；**没有轮询，也没有 WebSocket/SSE**）；密钥吊销与透明日志。以上都不在这期范围内，等它们真的做了再改这段。本期同样没有做过一次真机验证——证据全部来自单测、端到端测试与真 wasm 夹具；六期下来从没有第三方插件在真机上挂载过，这期也不改变这一点。
 
 **P0 的实施计划**：`legionAgent/docs/superpowers/plans/2026-08-16-plugin-lifecycle-kernel.md`（已执行完毕）。
 
