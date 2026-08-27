@@ -5,13 +5,23 @@ aliases: ["Agent 快速开始", "quick start", "启动 Agent"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "quick-start", "startup", "doctor"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-05-19"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
 children: []
+related_docs:
+  - id: "reference-legion-agent-config-context-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-config-context-001.md"
+  - id: "reference-legion-agent-tui-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-tui-001.md"
+  - id: "reference-legion-agent-cli-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-cli-001.md"
 ---
 
 # Legion Agent 快速开始
@@ -49,8 +59,8 @@ cd F:\source\stardust\Legion\legion\legionAgent
 检查本地环境和版本：
 
 ```powershell
-go run ./cmd -- doctor
-go run ./cmd -- version --plain
+go run ./cmd/agent -- doctor
+go run ./cmd/agent -- version --plain
 ```
 
 确认配置文件存在：
@@ -65,7 +75,7 @@ Test-Path .\agent.json
 Copy-Item .\configs\agent.complete.example.json .\agent.json
 ```
 
-最小可用配置需要包含 SQLite 存储、MaaS profile、上下文文件和 TUI 设置。OpenAI-compatible 模型服务通常这样写：
+最小可用配置需要包含 SQLite 存储、MaaS profile 和上下文文件。OpenAI-compatible 模型服务通常这样写（`agents.md` 的三处固定位置由加载器自动扫描，不用在配置里写路径）：
 
 ```json
 {
@@ -94,7 +104,6 @@ Copy-Item .\configs\agent.complete.example.json .\agent.json
   "context_files": {
     "enabled": true,
     "root": ".",
-    "agents_path": "AGENTS.md",
     "soul_path": "configs/persona/SOUL.md",
     "tools_path": "configs/persona/TOOLS.md",
     "user_path": "configs/persona/USER.md",
@@ -108,7 +117,7 @@ Copy-Item .\configs\agent.complete.example.json .\agent.json
 
 ```powershell
 $env:LEGION_AGENT_MAAS_API_KEY = "sk-..."
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 ## 三种运行方式
@@ -116,19 +125,19 @@ go run ./cmd -- tui --config .\agent.json
 交互式 TUI：
 
 ```powershell
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 单次非交互任务：
 
 ```powershell
-go run ./cmd -- run --plain --config .\agent.json --prompt "总结当前 Agent 的能力"
+go run ./cmd/agent -- run --plain --config .\agent.json --prompt "总结当前 Agent 的能力"
 ```
 
 HTTP 服务：
 
 ```powershell
-go run ./cmd -- serve --config .\agent.json --addr :8080
+go run ./cmd/agent -- serve --config .\agent.json --addr :8080
 ```
 
 ## 第一次 TUI 对话
@@ -186,8 +195,10 @@ go run ./cmd -- serve --config .\agent.json --addr :8080
 ```powershell
 go test ./...
 go vet ./...
-go build -o NUL ./cmd
+go build -o NUL ./cmd/agent
 ```
+
+Makefile 里也有对应目标：`make test`、`make vet`、`make build`、`make demo-smoke`。
 
 日常只验证 TUI/配置/session 时，可以先跑较小范围：
 
@@ -204,3 +215,11 @@ go test ./internal/cli ./internal/tui ./internal/config ./internal/sessioncache 
 | 理解多轮对话为什么连续 | [[reference-legion-agent-session-001\|会话连续性]] |
 | 使用 researcher/writer 协作 | [[reference-legion-agent-multi-agent-usage-001\|多 Agent 调用]] |
 | 启动服务和调用 HTTP API | [[reference-legion-agent-http-service-001\|HTTP 服务]] |
+
+## 相关文档
+
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — 全部配置块与环境变量
+- [[reference-legion-agent-tui-001|TUI 使用]] — 按键、slash 命令、`@agent`
+- [[reference-legion-agent-cli-001|CLI 命令速查]] — 全部子命令
+- [[reference-legion-agent-http-service-001|HTTP 服务]] — serve 与接口
+- [[reference-legion-agent-troubleshooting-001|常见问题排查]]

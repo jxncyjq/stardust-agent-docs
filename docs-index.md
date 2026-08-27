@@ -5,9 +5,9 @@ aliases: ["docs index", "文档总索引"]
 type: "reference"
 category: "index"
 tags: ["index", "docs", "navigation"]
-version: "3.3.0"
+version: "3.4.0"
 created: "2026-06-24"
-updated: "2026-08-17"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: null
@@ -20,7 +20,7 @@ related_docs:
 
 # 文档索引
 
-> 全仓库 Markdown 文档统一索引，由各文档 Front Matter 自动汇总。**264 个 `.md` 全部已声明唯一 `id`。** 新建文档后向「索引表」追加一行。
+> 全仓库 Markdown 文档统一索引，由各文档 Front Matter 自动汇总。**索引表当前收录 299 篇文档（仓库内 `.md` 共 327 个，其余为未纳入索引的临时/归档文件）。** 新建文档后向「索引表」追加一行。
 
 <!-- @section: index-table -->
 ## 索引表
@@ -55,17 +55,21 @@ related_docs:
 | [[agent-traces-001]] | Legion Agent Trace Snapshot | reference | `agents/legion-agent/traces.md` | agent, trace, snapshot |
 | [[reference-index-001]] | Legion Agent 参考手册索引 | reference | `agents/reference/index.md` | index, reference, manual |
 | [[reference-multi-agent-collaboration-001]] | 多 Agent 协作参考手册 | reference | `agents/reference/multi-agent-collaboration.md` | multi-agent, workflow, parallel, collaboration, serve, tui |
-| [[reference-legion-agent-cli-001]] | Legion Agent CLI 命令速查 | reference | `agents/reference/reference-legion-agent-cli-001.md` | agent, cli, commands, backup, data |
+| [[reference-legion-agent-auth-001]] | Legion Agent 鉴权与授权参考 | reference | `agents/reference/reference-legion-agent-auth-001.md` | agent, auth, rbac, security, token, approval |
+| [[reference-legion-agent-backend-api-001]] | Legion Agent 后端系统调用参考 | reference | `agents/reference/reference-legion-agent-backend-api-001.md` | agent, backend, http, api, sse, task, session |
+| [[reference-legion-agent-cli-001]] | Legion Agent CLI 命令速查 | reference | `agents/reference/reference-legion-agent-cli-001.md` | agent, cli, commands, backup, data, plugins |
 | [[reference-legion-agent-config-context-001]] | Legion Agent 配置与上下文文件 | reference | `agents/reference/reference-legion-agent-config-context-001.md` | agent, configuration, context-files, maas, persona |
 | [[reference-legion-agent-http-service-001]] | Legion Agent HTTP 服务 | reference | `agents/reference/reference-legion-agent-http-service-001.md` | agent, http, serve, api, sessions |
+| [[reference-legion-agent-integration-001]] | Legion Agent 接入参考 | reference | `agents/reference/reference-legion-agent-integration-001.md` | agent, integration, gui, sse, client, backend |
 | [[reference-legion-agent-multi-agent-usage-001]] | Legion Agent 多 Agent 调用 | reference | `agents/reference/reference-legion-agent-multi-agent-usage-001.md` | agent, multi-agent, tui, routing |
 | [[reference-legion-agent-quick-start-001]] | Legion Agent 快速开始 | reference | `agents/reference/reference-legion-agent-quick-start-001.md` | agent, quick-start, startup, doctor |
 | [[reference-legion-agent-session-001]] | Legion Agent 会话连续性 | reference | `agents/reference/reference-legion-agent-session-001.md` | agent, session, sqlite, context, conversation |
 | [[reference-legion-agent-tasks-md-001]] | Legion Agent tasks.md 协作规范 | reference | `agents/reference/reference-legion-agent-tasks-md-001.md` | agent, tasks, multi-agent, handoff, message, collaboration |
-| [[reference-legion-agent-tools-001]] | Legion Agent 工具能力 | reference | `agents/reference/reference-legion-agent-tools-001.md` | agent, tools, taskledger, message, workspace |
+| [[reference-legion-agent-tools-001]] | Legion Agent 工具能力 | reference | `agents/reference/reference-legion-agent-tools-001.md` | agent, tools, taskledger, message, browser, web, toolauth |
 | [[reference-legion-agent-troubleshooting-001]] | Legion Agent 常见问题排查 | reference | `agents/reference/reference-legion-agent-troubleshooting-001.md` | agent, troubleshooting, tui, maas, session |
 | [[reference-legion-agent-tui-001]] | Legion Agent TUI 使用 | reference | `agents/reference/reference-legion-agent-tui-001.md` | agent, tui, bubble-tea, commands, composer |
 | [[reference-legion-agent-user-manual-001]] | Legion Agent 使用手册总览 | reference | `agents/reference/reference-legion-agent-user-manual-001.md` | agent, manual, index, tui, cli, session, maas |
+| [[reference-legion-gateway-001]] | Legion Gateway IM 网关参考 | reference | `agents/reference/reference-legion-gateway-001.md` | agent, gateway, im, telegram, integration, backend |
 | [[spec-multi-agent-implementation-clarification-2026-05-18]] | 多 Agent 代码实现澄清 | spec | `agents/reference/spec-multi-agent-implementation-clarification-2026-05-18.md` | multi-agent, workflow, scheduler, coordinator, agent-registry |
 | [[design-multi-agent-001]] | Multi-Agent 架构设计 | design | `agents/specs/2026-05-18-multi-agent-design.md` | multi-agent, design, architecture |
 | [[analysis-clawcode-overview-001]] | Claw Code 项目架构总览 | analysis | `design/analysis/claude/01-overview.md` | claw-code, architecture, rust, overview |
@@ -547,9 +551,12 @@ related_docs:
 - [[index-analysis-000]] — Claw Code 分析文档索引
 - [[reference-docs-index-001]] — 文档索引
 - [[reference-index-001]] — Legion Agent 参考手册索引
+- [[reference-legion-agent-auth-001]] — Legion Agent 鉴权与授权参考
+- [[reference-legion-agent-backend-api-001]] — Legion Agent 后端系统调用参考
 - [[reference-legion-agent-cli-001]] — Legion Agent CLI 命令速查
 - [[reference-legion-agent-config-context-001]] — Legion Agent 配置与上下文文件
 - [[reference-legion-agent-http-service-001]] — Legion Agent HTTP 服务
+- [[reference-legion-agent-integration-001]] — Legion Agent 接入参考
 - [[reference-legion-agent-multi-agent-usage-001]] — Legion Agent 多 Agent 调用
 - [[reference-legion-agent-quick-start-001]] — Legion Agent 快速开始
 - [[reference-legion-agent-session-001]] — Legion Agent 会话连续性
@@ -558,6 +565,7 @@ related_docs:
 - [[reference-legion-agent-troubleshooting-001]] — Legion Agent 常见问题排查
 - [[reference-legion-agent-tui-001]] — Legion Agent TUI 使用
 - [[reference-legion-agent-user-manual-001]] — Legion Agent 使用手册总览
+- [[reference-legion-gateway-001]] — Legion Gateway IM 网关参考
 - [[reference-maas-model-profiles-001]] — MaaS Model Profiles 参考手册
 - [[reference-multi-agent-collaboration-001]] — 多 Agent 协作参考手册
 - [[reference-plugin-p1-handoff-20260817-001]] — 接续入口 — 插件系统 P1 实现就绪（2026-08-17）

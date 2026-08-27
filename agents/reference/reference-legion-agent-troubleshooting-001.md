@@ -5,13 +5,23 @@ aliases: ["Agent 排障", "troubleshooting", "TUI 问题"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "troubleshooting", "tui", "maas", "session"]
-version: "1.1.0"
+version: "2.0.0"
 created: "2026-05-19"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
 children: []
+related_docs:
+  - id: "reference-legion-agent-tools-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-tools-001.md"
+  - id: "reference-legion-agent-auth-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-auth-001.md"
+  - id: "reference-legion-agent-backend-api-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-backend-api-001.md"
 ---
 
 # Legion Agent 常见问题排查
@@ -21,7 +31,7 @@ children: []
 请使用 `tui` 子命令，而不是 `run`：
 
 ```powershell
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 `run` 是单次任务模式，任务结束后会退出。
@@ -39,7 +49,7 @@ go run ./cmd -- tui --config .\agent.json
 快速验证配置是否真的走 HTTP MaaS：
 
 ```powershell
-go run ./cmd -- run --plain --config .\agent.json --prompt "只回答 ok"
+go run ./cmd/agent -- run --plain --config .\agent.json --prompt "只回答 ok"
 ```
 
 如果返回 demo 文本或固定文本，检查是否误用了 `--demo`，或配置中没有可用 `base_url`。如果报 400，请优先看上游模型服务返回的错误正文，常见原因是 `model` 名不对、工具 schema 不被上游兼容、API key 无效。
@@ -61,7 +71,7 @@ go run ./cmd -- run --plain --config .\agent.json --prompt "只回答 ok"
 
 ```powershell
 $env:LEGION_AGENT_TUI_COLOR_PROFILE = "ansi256"
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 也可以在配置中设置：
@@ -124,7 +134,41 @@ go run ./cmd -- tui --config .\agent.json
 
 ## 工具输出看起来像伪调用
 
-Agent 已有输出净化策略会拦截 `search_content(...)`、`read_file(...)` 等伪工具文本。若模型仍回答“不确定”或要求先搜索，说明当前任务未经过真实工具协议执行，应使用已接入的内置工具能力或在后续 P21/P工具批次继续补齐。
+输出净化会拦截 `search_content(...)`、`read_file(...)` 这类伪工具文本。若模型仍说「需要先搜索」，说明它没有返回结构化 `tool_calls`：先确认模型服务支持 function calling，再看 `/event` 里有没有 `tool_call_requested`。
+
+## 工具相关
+
+| 现象 | 处理 |
+|------|------|
+| 某工具在能力清单里根本不存在 | `web_search` 需要 `web.searxng_url` 非空才注册；`browser_*` 需要 `browser.enabled=true`；也可能被 `runtime.disabled_tools` 禁了 |
+| 工具报 `permission denied` | 该工具没登记进角色允许表；新增工具必须同步登记，enforcer 跑在策略之前 |
+| 启动报「未知工具名」 | `runtime.disabled_tools` 里的名字必须是 gateable 目录里的工具 |
+| 同一个工具被反复调用后中断 | 触发单工具 30 次上限，发 `tool_loop_broken` 事件；查为什么模型在原地打转（多半是上一轮结果没被利用） |
+| 任务报超过工具轮数 | `runtime.max_tool_rounds` 默认 4，按需调大 |
+| Manual 模式任务一直挂着 | 没人裁决审批：拉 `GET /v1/approvals`，用 `POST /v1/tasks/{id}/approvals/{ticketID}` 批；超时（默认 300 秒）会自动按拒绝返回 |
+| 文件路径被拒 | 路径必须落在该任务 ToolRoot 内（会话 `working_dir` 优先，否则配置根） |
+| `generated_files` 为空 | `write_file` 默认 `overwrite=false`，目标文件已存在时写入失败被跳过——验证请换新文件名 |
+
+## HTTP 接入相关
+
+| 现象 | 处理 |
+|------|------|
+| 401 unauthorized | 配了 `admin_token` 却没带 Bearer；GUI/loopback 模式下 token 每次启动重铸，必须现读 |
+| 403 forbidden origin | loopback 加固下 `Origin` 与服务 baseURL 不一致 |
+| 403 company access denied | 开了 `require_identity` 却没注入 `X-Company-ID` |
+| 404 not found（插件端点） | 该进程没配 `plugins.manifest`，不等于「没有插件」 |
+| 404（中断任务） | 任务已结束或不存在，契约上不会把「没在跑」报成成功 |
+| 400 unknown field | 会话相关端点拒收未知字段（如客户端自带 `id`） |
+| 任务卡在 pending | 并发已满（`runtime.max_concurrent_tasks` 默认 4），或调度未运行，看 `/debug/diagnostics` |
+
+## prompt 越来越大 / token 消耗异常
+
+单任务 input 涨到 40-60k 通常**不是 bug**：多轮工具循环每轮都会重发累积的会话。排查顺序：
+
+1. 打开 `runtime.debug`，它会在每次推理前按消息打印角色、字符数、工具调用数和预览，定位是哪条消息在膨胀。
+2. 看轮数：能用一次检索解决的别让模型翻十次文件。
+3. 需要时打开 `runtime.compact_token_threshold` 触发会话压缩（单任务最多压 3 次）。
+4. 对账用 `audit_events`（按时间窗查），`conversation_turns` 的 token 列只对新会话有值，老数据是 0。
 
 ## 运行日志在哪里
 
@@ -153,6 +197,14 @@ agent.db
 如果配置了 `storage.path`，以配置为准。备份和恢复：
 
 ```powershell
-go run ./cmd -- backup --config .\agent.json --out .\backups\agent.db.bak
-go run ./cmd -- restore --config .\agent.json --in .\backups\agent.db.bak
+go run ./cmd/agent -- backup --config .\agent.json --out .\backups\agent.db.bak
+go run ./cmd/agent -- restore --config .\agent.json --in .\backups\agent.db.bak
 ```
+
+## 相关文档
+
+- [[reference-legion-agent-tools-001|工具能力]] — 工具清单、执行管线与上限
+- [[reference-legion-agent-auth-001|鉴权与授权参考]] — 401/403 的完整判定规则
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — 错误码口径
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — 相关配置字段
+- [[reference-legion-agent-session-001|会话连续性]] — 上下文不连续的排查

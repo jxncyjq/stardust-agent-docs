@@ -5,9 +5,9 @@ aliases: ["multi-agent implementation clarification", "多 Agent 实现边界", 
 type: "spec"
 category: "agents/specs"
 tags: ["multi-agent", "workflow", "scheduler", "coordinator", "agent-registry"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-05-18"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "codex"
 status: "published"
 related_docs:
@@ -298,3 +298,9 @@ Coordinator 保留默认 runtime 作为 fallback，但在 task 有 AgentID 且 r
 `2026-05-18-multi-agent-design.md` 是面向实现者的修正设计，强调“历史上为什么还不是真多 Agent，以及如何让 agent_id 真的生效”。
 
 当前编码应以后者为准：先补齐 per-agent runtime routing，再回头扩展组织化协作。
+
+## 相关文档
+
+- [[multi-agent-collaboration|多 Agent 协作]] — 当前可用的协作方式
+- [[reference-legion-agent-multi-agent-usage-001|多 Agent 调用]] — 使用入口
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — 任务/workflow 端点现状

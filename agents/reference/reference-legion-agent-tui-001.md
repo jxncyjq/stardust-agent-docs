@@ -5,13 +5,23 @@ aliases: ["TUI 使用", "agent tui", "Bubble Tea TUI"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "tui", "bubble-tea", "commands", "composer"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-05-19"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
 children: []
+related_docs:
+  - id: "reference-legion-agent-session-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-session-001.md"
+  - id: "reference-legion-agent-multi-agent-usage-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-multi-agent-usage-001.md"
+  - id: "reference-legion-agent-tools-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-tools-001.md"
 ---
 
 # Legion Agent TUI 使用
@@ -19,7 +29,7 @@ children: []
 ## 启动
 
 ```powershell
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 界面进入后，底部 Composer 输入任务，按 Enter 发送。运行期间底部会显示工作状态和动态进度条；长输出可以在主输出区用鼠标滚轮上下滚动。
@@ -86,6 +96,8 @@ TUI 采用全屏 Bubble Tea 工作台：
 | `/skill install <source>` | 安装技能 |
 | `/skill update <name>` | 更新技能 |
 | `/skill uninstall <name>` | 卸载技能 |
+| `/mode <manual\|plan\|auto>` | 设置当前会话工作模式 |
+| `/cwd <path>` | 设置当前会话工作目录 |
 
 `/skill` 默认操作主 Agent 的 `skills.install_root`。如果要操作子 Agent 的技能目录，可以追加 `--agent <name>`：
 
@@ -96,6 +108,17 @@ TUI 采用全屏 Bubble Tea 工作台：
 ```
 
 TUI 会使用已注册 Agent 的配置解析目标目录。writer 配置了 `skills.install_root` 时写入 writer 目录；未配置时继承根配置。
+
+### 工作模式与工作目录
+
+```text
+/mode manual
+/cwd F:\work\demo
+```
+
+`/mode` 三档：`auto` 不受限（默认）、`plan` 只给只读工具产出计划、`manual` 把有副作用的工具挡在人工审批之后。模式存在会话上，之后该会话派生的任务都继承它。
+
+`/cwd` 设定会话工作目录，它同时决定工具沙箱根与 `agents.md` 项目根。**一次性可设**：从空设成某目录可以，重设同值可以，改成另一个目录会被拒——会话磁盘状态按写入时的目录归档，改指向会遗弃已有状态。
 
 ## 常用操作示例
 
@@ -156,7 +179,7 @@ TUI 默认显示用户输入、thinking 和模型输出。`thinking` 优先显�
 
 ```powershell
 $env:LEGION_AGENT_TUI_COLOR_PROFILE = "ansi256"
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 或在配置中设置：
@@ -168,3 +191,11 @@ go run ./cmd -- tui --config .\agent.json
   }
 }
 ```
+
+## 相关文档
+
+- [[reference-legion-agent-session-001|会话连续性]] — 会话命令背后的持久化与工作模式
+- [[reference-legion-agent-multi-agent-usage-001|多 Agent 调用]] — `@agent`、`--task`、`--inbox`
+- [[reference-legion-agent-tools-001|工具能力]] — `/event` 里看到的工具事件
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — `tui.*` 配置
+- [[reference-legion-agent-cli-001|CLI 命令速查]] — 启动参数

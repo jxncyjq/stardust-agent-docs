@@ -4,13 +4,16 @@ title: "Legion Agent Tenant 与 Company 安全边界"
 type: "guide"
 category: "agents/legion-agent"
 tags: ["agent", "security", "tenant", "company", "p11"]
-version: "0.1.0"
+version: "0.2.0"
 created: "2026-05-16"
-updated: "2026-05-16"
+updated: "2026-08-27"
 status: "draft"
 related_docs:
   - path: "../../plans/03-agent/p11-platform-integration-plan.md"
     relation: "implements"
+  - id: "reference-legion-agent-auth-001"
+    relation: "related_to"
+    path: "../reference/reference-legion-agent-auth-001.md"
 ---
 
 # Legion Agent Tenant 与 Company 安全边界

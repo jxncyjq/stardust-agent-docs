@@ -1,14 +1,14 @@
 ---
 id: "reference-legion-agent-tools-001"
 title: "Legion Agent 工具能力"
-aliases: ["Agent tools", "内置工具", "工具调用"]
+aliases: ["Agent tools", "内置工具", "工具调用", "lazy tools"]
 type: "reference"
 category: "agents/reference"
-tags: ["agent", "tools", "taskledger", "message", "workspace"]
-version: "1.1.0"
+tags: ["agent", "tools", "taskledger", "message", "browser", "web", "toolauth"]
+version: "2.0.0"
 created: "2026-05-25"
-updated: "2026-05-25"
-author: "codex"
+updated: "2026-08-27"
+author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
 children: []
@@ -19,126 +19,202 @@ related_docs:
   - id: "reference-legion-agent-tasks-md-001"
     relation: "related_to"
     path: "./reference-legion-agent-tasks-md-001.md"
+  - id: "reference-legion-agent-auth-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-auth-001.md"
 ---
 
 # Legion Agent 工具能力
 
-本文说明模型运行时可以调用的内置工具。普通用户不需要在 TUI 中手写 `read_file({...})` 这类伪调用；正确方式是用自然语言提出任务，由模型按工具 schema 发起工具调用。
+本文说明模型运行时可以调用的内置工具、工具怎么被暴露给模型、以及执行链路上的每道闸。普通用户不需要在 TUI 里手写 `read_file({...})` 这类伪调用——正确方式是用自然语言提任务，由模型按 schema 发起真实工具调用。
 
-## 工具执行链路
+<!-- @section: exposure -->
+## 工具怎么暴露给模型：lazy 协议
 
-Legion Agent 的工具机制分为五步：
+默认（`runtime.lazy_tools=true`，默认开）模型每轮**只看到两个元工具**，而不是全部工具的完整 schema：
+
+| 元工具 | 作用 |
+|--------|------|
+| `load_capabilities` | 按名字加载能力全文：工具的参数 schema，或技能的完整说明。一次最多 5 个 |
+| `call_tool` | 按名字调用一个真实工具，参数用 `arguments_json` 字符串传 |
+
+可用能力的名字与一句话说明放在 prompt 的 `<available_capabilities>` 清单里，模型先看清单、按需 `load_capabilities` 加载、再 `call_tool` 调用。这样一次不需要工具的普通对话只付两个小 schema 的开销，而不是全量工具 schema（约 1800 token）。
+
+元工具**永远常驻**，不参与禁用清单。把 `runtime.lazy_tools` 设为 `false` 会回退到「每轮下发完整原生工具 schema」的旧行为（安全回滚开关）。
+
+<!-- @end-section -->
+
+<!-- @section: loop -->
+## 工具循环：多轮消息数组
 
 ```text
-Tool Descriptor + Handler
-  -> Runtime exposes InferenceTool schema
-  -> MaaS/OpenAI-compatible model returns tool_calls
-  -> Registry executes real tool handler
-  -> Runtime appends Tool results and asks model for final answer
+Descriptor + Handler 注册
+  -> Runtime 组装 InferenceTool（lazy 下是两个元工具）
+  -> 模型返回 tool_calls
+  -> Registry.Execute 真正执行
+  -> 结果作为独立的 tool 消息追加进会话数组
+  -> 下一轮推理，直到模型给出最终回答或触发上限
 ```
 
-对应代码职责：
+会话是**追加式多轮消息数组**，不是「把工具结果拼回同一条 user 消息」。这条是有事故背景的硬约束：早期实现每轮重发一条去重后的 user 消息，模型看到的 prompt 逐轮字节相同，于是反复发同一个调用——一次任务 554 秒里读了同一个文件 152 次。保持每轮独立，重复才对模型可见。
 
-| 环节 | 代码位置 | 说明 |
-|------|----------|------|
-| 工具注册 | `internal/tool.Registry` | 注册 `Descriptor` 和真实 `Handler` |
-| 工具 schema 暴露 | `internal/runtime.Runtime.inferenceTools` | 把 descriptors 转成 MaaS `InferenceTool` |
-| OpenAI-compatible 转换 | `internal/adapter.HTTPMaasClient` | 转成 `tools:function`，并解析返回的 `tool_calls` |
-| 工具执行 | `internal/runtime.Runtime.executeToolCalls` | 发布事件、调用 Registry、收集结果 |
-| 结果回填 | `promptWithToolResults` | 将工具结果拼入下一轮 prompt，让模型生成最终回答 |
+循环上限：
 
-当前实现是“工具结果回填 prompt”的兼容模式，而不是完整保留 OpenAI `assistant tool_calls` 和 `tool` role message 的消息数组模式。它已经能完成真实工具调用闭环，但如果后续要提高对不同模型服务的兼容性，可以演进为标准多消息 tool-calling 协议。
+| 限制 | 值 | 触发后 |
+|------|-----|--------|
+| `runtime.max_tool_rounds` | 默认 4 | 超轮数仍要工具，任务失败并提示 |
+| 单工具调用次数上限 `toolLoopCap` | 30（按工具名计，忽略参数） | 发 `tool_loop_broken` 事件，停止工具循环 |
+| `runtime.compact_token_threshold` | 默认 0（关闭） | 超阈值压缩历史，单任务最多 3 次；首条消息（稳定缓存前缀）永不压缩 |
 
+单工具计数是**任务级共享预算**：插件通过宿主 `call_tool` 发起的调用记在同一个计数器上，不能绕过。
+
+<!-- @end-section -->
+
+<!-- @section: pipeline -->
 ## Registry 执行管线
 
-`Registry.Execute` 是工具安全边界的中心。一次工具调用会依次经过：
+`Registry.Execute` 是工具安全边界的中心，一次调用依次过：
 
-1. 查找工具 handler。
-2. 按 `Descriptor.InputSchema` 校验必填参数和简单类型。
-3. 检查角色权限。
-4. 执行策略判断，高风险且未自动允许的工具会被拒绝。
-5. 执行 guardrails。
-6. 按工具 timeout 创建执行上下文。
-7. 调用真实 handler。
-8. 对结果执行 after guardrails。
-9. 对输出做脱敏和控制字符清理。
-10. 写入 audit。
+1. 查 handler。
+2. 按 `Descriptor.InputSchema` 校验必填与基本类型。
+3. 角色权限（`role:tool` 允许表，当前生产工具都在 `developer:*` 域）。
+4. 执行策略：高风险且未自动允许则拒。
+5. guardrails（前置）。
+6. 按工具 `Timeout` 建执行上下文。
+7. 调真实 handler。
+8. guardrails（后置）。
+9. 输出脱敏 + 控制字符清理。
+10. 写审计。
 
-这意味着“模型说自己调用了工具”和“真实工具被执行”不是一回事。只有模型返回结构化 `tool_calls`，并通过 Registry 执行成功，才算真实调用。
+「模型说自己调用了工具」和「工具真的被执行」是两件事：只有返回结构化 `tool_calls` 并通过 Registry 执行成功，才算真实调用。
 
+<!-- @end-section -->
+
+<!-- @section: file-tools -->
 ## 工作区文件工具
 
 | 工具 | 参数 | 说明 |
 |------|------|------|
-| `list_files` | `directory` 可选 | 列出工作区内目录和文件 |
-| `read_file` | `path` | 读取工作区内 UTF-8 文本文件 |
-| `search_content` | `pattern`、`directory` 可选、`file_types` 可选 | 在工作区内搜索文本内容 |
-| `write_file` | `path`、`content`、`overwrite` 可选 | 写入工作区文件；文件已存在时默认失败，需显式 `overwrite=true` |
+| `read_file` | `path`、`offset` 可选、`limit` 可选 | 读工作区内 UTF-8 文本。**长文件分页返回**，用上一页末尾给出的 offset 继续读 |
+| `write_file` | `path`、`content`、`overwrite` 可选 | 写文件；已存在且未显式 `overwrite=true` 时失败（Sensitive） |
+| `search_content` | `pattern`、`directory` 可选、`file_types` 可选 | 工作区内文本搜索 |
+| `list_files` | `directory` 可选 | 列目录 |
 
-路径可以是相对 `context_files.root` 的路径，也可以是仍位于工作区 root 内的绝对路径。越界路径会被拒绝。
+路径可以是相对工作区根的路径，也可以是仍在根内的绝对路径；越界路径被拒。工作区根（ToolRoot）按 **会话 `working_dir` 优先、否则回退配置根** 解析，`agents.md` 分层注入用的 projectRoot 与它同源。
 
-只读运行时不会注册 `write_file`，适合 researcher 这类只读角色。
+`write_file` 成功写出的相对路径会被任务捕获，出现在 `GET /v1/tasks/{id}/result` 的 `generated_files` 里。
 
+<!-- @end-section -->
+
+<!-- @section: other-tools -->
+## 其余内置工具
+
+### 任务台账（TaskLedger）
+
+| 工具 | 说明 |
+|------|------|
+| `create_task` / `claim_task` / `update_task` | 建/认领/更新共享任务 |
+| `append_task_message` | 向任务追加协作消息 |
+| `read_task` | 读单个任务详情 |
+| `rebuild_tasks` | 从结构化状态重建 `tasks.md` 投影 |
+
+### Agent 消息
+
+| 工具 | 说明 |
+|------|------|
+| `send_message` | 向目标 Agent 发消息，支持 `task_id`、`type`、`summary`、`artifact` |
+| `read_messages` | 读当前 Agent 消息，可按状态过滤并标记已读 |
+
+TUI 的 `/send`、`/inbox`、`@agent --inbox` 与 HTTP `/v1/agents/{id}/messages` 读写的是同一份数据。
+
+### 网络
+
+| 工具 | 说明 | 启用条件 |
+|------|------|----------|
+| `fetch_url` | 抓取 URL 内容（Sensitive） | `web.enabled` |
+| `web_extract` | 抓网页正文（Sensitive） | `web.enabled` |
+| `web_search` | 经 SearXNG 搜索（Sensitive） | `web.searxng_url` 非空，否则**根本不注册** |
+
+`web` 配置还控制私网访问（`allow_private_hosts`）、超时、响应上限、域名 allowlist、搜索引擎与默认条数。
+
+### 内置浏览器
+
+| 工具 | 说明 |
+|------|------|
+| `browser_open` | 打开 URL，返回 `session_id` 和带稳定 ref 的可访问性树（Sensitive） |
+| `browser_read` | 读当前页可访问性树，只读 |
+| `browser_click` | 按 ref 点击（Sensitive） |
+| `browser_type` | 按 ref 输入文本，`submit=true` 时回车（Sensitive） |
+| `browser_close` | 关闭会话释放上下文 |
+
+默认关闭（`browser.enabled=false`），开启需要运行环境有可用 Chromium；`browser.bin_path` 可指向系统 Chrome/Edge 绕开自动下载。观测超过 `snapshot_rune_threshold` 会走三级降级：全文落盘去重 + 任务导向抽取 + 按行截断，模型再用 `read_file` 翻页读落盘快照。
+
+### 编排者专属
+
+| 工具 | 说明 |
+|------|------|
+| `delegate_task` | 委派子任务给其他 Agent（Sensitive），子角色 `leaf`（默认，不能再委派）或 `orchestrator`（可嵌套至深度上限） |
+| `moa_consult` | 向多个模型发起 MoA 咨询（Sensitive，高成本） |
+| `session_search` | 跨会话检索历史 |
+
+<!-- @end-section -->
+
+<!-- @section: agent-diff -->
 ## 主 Agent 与子 Agent 的工具差异
 
-| 运行时 | 默认工具 |
-|--------|----------|
-| 主 Agent | `read_file`、`search_content`、`list_files`、`write_file`、TaskLedger、AgentMessage |
-| 子 Agent | `read_file`、`search_content`、`list_files`、TaskLedger、AgentMessage |
+| 运行时 | 工具集 |
+|--------|--------|
+| 默认（根编排者） | 读写文件 + TaskLedger + AgentMessage + web +（开启时）browser + `delegate_task` + `moa_consult` + `session_search` |
+| 子 Agent（worker） | 读写文件 + TaskLedger + AgentMessage + web +（开启时）browser |
 
-子 Agent resolver 当前默认使用只读 workspace registry，因此 `@researcher`、`@writer` 这类子 Agent 不会直接获得 `write_file`。如果需要写文件，推荐由 writer 产出内容后通过主 Agent 审阅写入，或后续引入按角色配置的工具权限。
+子 Agent 现在**有写文件能力**（读写工作区 registry），旧版「子 Agent 只读」的说法已过时。
 
-## TaskLedger 工具
+差异只在三个编排者层能力上，且是刻意设计（有测试锁定）：
 
-TaskLedger 工具用于多个 Agent 通过 `tasks.md` 协作：
+- `delegate_task`：worker 再派 worker 会让委派树无界；
+- `session_search`：会跨公司/跨 Agent 读历史，越过 worker 被限定的沙箱与任务简报；
+- `moa_consult`：会绕过该 worker 被指派的模型 profile 并放大成本。
 
-| 工具 | 说明 |
-|------|------|
-| `create_task` | 创建共享任务条目 |
-| `claim_task` | 声明某个 Agent 正在处理任务 |
-| `update_task` | 更新任务状态、摘要、结果或产物 |
-| `append_task_message` | 向任务追加协作消息 |
-| `read_task` | 读取单个任务详情 |
-| `rebuild_tasks` | 从结构化状态重建 `tasks.md` |
+在此之上，`runtime.disabled_tools` 可以按 Agent 再做减法，详见 [[reference-legion-agent-auth-001|鉴权与授权参考]]。
 
-TaskLedger 适合可人工审阅的协作状态。任务很多时，应把长结果沉淀到 `docs/` 或 `memory/`，只在 `tasks.md` 中保留摘要和链接。
+<!-- @end-section -->
 
-## AgentMessage 工具
+<!-- @section: modes -->
+## 工作模式与审批
 
-AgentMessage 工具用于 Agent 间 inbox/outbox 消息：
+| 模式 | 工具行为 |
+|------|----------|
+| `auto` | 不受限 |
+| `plan` | 只给只读工具，产出计划无副作用 |
+| `manual` | Sensitive 工具挡在人工审批后；审批依赖未装配时运行时直接失败 |
 
-| 工具 | 说明 |
-|------|------|
-| `send_message` | 向目标 Agent 发送消息，支持 `task_id`、`type`、`summary`、`artifact` |
-| `read_messages` | 读取当前 Agent 的消息，可按状态过滤并标记已读 |
+Sensitive 工具当前是：`write_file`、`fetch_url`、`web_search`、`web_extract`、`delegate_task`、`moa_consult`、`browser_open` / `browser_click` / `browser_type`。
 
-TUI 中的 `/send`、`/inbox`、`@agent --inbox` 会使用同一套消息能力。HTTP API 的 `/v1/agents/{agent_id}/messages` 也读写同一份消息数据。
+审批通过 `GET /v1/approvals` 拉取、`POST /v1/tasks/{taskID}/approvals/{ticketID}` 裁决，超时（默认 300 秒）自动按拒绝返回给模型。
 
-## 调用与展示
+<!-- @end-section -->
 
-- 工具调用由模型通过 OpenAI-compatible `tool_calls` 或运行时内部接口发起。
-- TUI 会把工具执行过程作为事件记录，可通过 `/event` 查看。
-- 大段工具输出应进入可滚动输出区或日志，不应在底部状态栏截断为最终答案。
-- 伪工具调用文本会被当作普通模型输出处理；如果模型声称要调用工具但没有真实 tool call，应优先检查模型兼容性和工具 schema。
-- `runtime.max_tool_rounds` 控制最多连续工具轮数，默认是 4；模型超过轮数仍要求工具时，任务会失败并提示超过限制。
-- 工具结果会发布 `tool_result` 事件，然后进入下一轮模型推理，最终用户看到的是模型基于工具结果整理后的回答。
-
+<!-- @section: troubleshoot -->
 ## 常见排查
 
 | 现象 | 判断方向 |
 |------|----------|
-| 模型输出 `search_content({...})` 文本 | 这是伪工具调用，说明模型没有返回结构化 `tool_calls` |
-| OpenAI-compatible 返回 schema 错误 | 检查工具 schema 是否有 `type: object`；当前适配器会为 nil schema 自动补 object |
-| 子 Agent 不能写文件 | 子 Agent 默认只读，当前设计如此 |
-| 工具结果没有进入最终回答 | 检查 `runtime.max_tool_rounds`、模型是否在第二轮基于 `Tool results` 回答 |
-| TUI 看不到工具过程 | 用 `/event` 查看事件；工具结果也会写入日志或事件流 |
-| 文件路径被拒绝 | 路径必须位于 `context_files.root`/ToolRoot 内 |
+| 模型输出 `search_content({...})` 文本 | 伪工具调用：模型没返回结构化 `tool_calls`，先查模型兼容性 |
+| 同一工具被反复调用后中断 | 触发 `toolLoopCap`（30 次/工具），看 `tool_loop_broken` 事件与前因 |
+| 工具结果没进最终回答 | 查 `runtime.max_tool_rounds` 是否用尽 |
+| 工具压根不在清单里 | 该工具未启用（`web.searxng_url` 为空 / `browser.enabled=false`），或被 `runtime.disabled_tools` 禁了 |
+| `permission denied` | 工具没登记进角色允许表（新增工具必须同步登记，enforcer 先于策略生效） |
+| 配置里写了工具名但装配失败 | 名字不在 `toolauth` gateable 目录里 |
+| 路径被拒 | 路径必须落在该任务 ToolRoot（会话 `working_dir` 优先）内 |
+| `generated_files` 为空 | `write_file` 遇到已存在文件且没传 `overwrite=true`，被正确跳过 |
+| TUI 看不到工具过程 | 用 `/event` 看事件；也可订阅 `/v1/events` |
 
-## 权限边界
+<!-- @end-section -->
 
-当前内置工具主要面向 `developer:*` 能力域。实际安全边界包括：
+## 相关文档
 
-- 工作区 root 限制。
-- 只读 runtime 不包含 `write_file`。
-- HTTP 层通过 Bearer token 和 RBAC 保护治理接口。
-- 事件、诊断和 SSE 输出会脱敏敏感字段。
+- [[reference-legion-agent-auth-001|鉴权与授权参考]] — 角色允许表、`disabled_tools`、审批闸门
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — `runtime` / `web` / `browser` 配置块
+- [[reference-legion-agent-tasks-md-001|tasks.md 协作规范]] — TaskLedger 协议
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — 审批与事件端点
+- [[reference-legion-agent-troubleshooting-001|常见问题排查]]

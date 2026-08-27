@@ -4,9 +4,9 @@ title: "Legion Agent Governance RBAC"
 type: "guide"
 category: "backend/agent"
 tags: ["agent", "governance", "rbac", "security"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-06-24"
-updated: "2026-06-24"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: null
@@ -15,6 +15,9 @@ related_docs:
   - id: "agent-index-001"
     relation: "related_to"
     path: "./index.md"
+  - id: "reference-legion-agent-auth-001"
+    relation: "related_to"
+    path: "../reference/reference-legion-agent-auth-001.md"
 ---
 
 # Legion Agent Governance RBAC

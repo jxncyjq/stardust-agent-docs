@@ -5,15 +5,15 @@ aliases: ["多 agent", "multi-agent", "并行 agent", "agent 协作", "workflow 
 type: "reference"
 category: "agents/reference"
 tags: ["multi-agent", "workflow", "parallel", "collaboration", "serve", "tui"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-05-18"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: null
 children: []
 related_docs:
-  - id: "reference-configuration-001"
+  - id: "agent-configuration-001"
     relation: "related_to"
     path: "../legion-agent/configuration.md"
   - id: "reference-maas-model-profiles-001"
@@ -26,11 +26,12 @@ related_docs:
 <!-- @section: overview -->
 ## 概述
 
-Legion Agent 提供三种让多个 agent 协作运行任务的方式：
+Legion Agent 提供四种让多个 agent 协作运行任务的方式：
 
 | 方式 | 适用场景 | 实现状态 |
 |------|----------|----------|
 | **Workflow Engine + per-agent runtime routing** | 在单进程内编排多个 task，并按 `task.agent_id` 切换 Agent 配置 | ✅ 已实现，推荐 |
+| **`delegate_task` 模型自主委派** | 让根编排者在任务执行中自己把子任务派给其他 Agent | ✅ 已实现（仅根编排者持有该工具，Sensitive，子任务完成发 `subtask_completed`） |
 | **多进程 + 共享文件**（多终端 `agent tui`）| 手动并行，共享 `agent.db` 和文件系统 | ✅ 可用（手动协调）|
 | **跨进程路由**（`TaskSpec.AgentID` 分发）| 真正的多 agent 进程互相路由 task | 🚧 单进程内已按 `task.agent_id` 路由；跨进程分发待实现 |
 <!-- @end-section -->
@@ -50,6 +51,7 @@ Legion Agent 提供三种让多个 agent 协作运行任务的方式：
 | Agent message bus | Agent 如何发 inbox/outbox 消息 | 已完成，SQLite `agent_messages`、工具、TUI 和 HTTP API 共用同一数据结构 |
 | Workflow result handoff | workflow 前序 task 结果如何传给后续 task | 已完成，支持 `{{tasks.<task_id>.result}}` 占位符 |
 | HTTP message API | 外部系统如何发送/查询 AgentMessage | 已完成，`GET/POST /v1/agents/{id}/messages` |
+| 模型自主委派 | 模型执行中如何把子任务交给别的 Agent | 已完成，`delegate_task` 工具；子角色 `leaf`（默认）/`orchestrator`（可嵌套至深度上限），worker 不持有该工具以免委派树无界 |
 
 这六个能力面职责不同：routing 只决定执行者，session 负责对话连续性，TaskLedger 负责可读任务账本，message bus 负责 Agent 间消息，workflow handoff 负责编排内结果传递，HTTP API 负责外部集成。
 <!-- @end-section -->
@@ -369,5 +371,9 @@ agent tui --config agent.json --maas-profile reviewer
 
 ## 相关文档
 
-- [[reference-configuration-001|配置参考手册]] — `server`、`storage`、`runtime` 等配置字段
+- [[agent-configuration-001|Legion Agent 配置]] — `server`、`storage`、`runtime` 等配置字段
 - [[reference-maas-model-profiles-001|MaaS Model Profiles]] — 多 profile 配置与 CLI 用法
+- [[reference-legion-agent-multi-agent-usage-001|多 Agent 调用]] — TUI/`--task`/`--inbox` 使用入口
+- [[reference-legion-agent-tools-001|工具能力]] — `delegate_task` 等编排者工具
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — workflow 与任务端点
+- [[spec-multi-agent-implementation-clarification-2026-05-18|多 Agent 代码实现澄清]] — 能力边界与历史差距

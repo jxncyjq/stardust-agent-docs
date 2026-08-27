@@ -4,9 +4,9 @@ title: "Legion Agent HTTP API"
 type: "api"
 category: "backend/agent"
 tags: ["agent", "http", "api"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-06-24"
-updated: "2026-06-24"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: null
@@ -15,6 +15,9 @@ related_docs:
   - id: "agent-index-001"
     relation: "related_to"
     path: "./index.md"
+  - id: "reference-legion-agent-backend-api-001"
+    relation: "related_to"
+    path: "../reference/reference-legion-agent-backend-api-001.md"
 ---
 
 # Legion Agent HTTP API
@@ -22,7 +25,7 @@ related_docs:
 `agent serve` 会启动 HTTP API。默认监听地址来自配置 `server.listen_addr`，也可以用命令行覆盖。
 
 ```powershell
-go run ./cmd -- serve --config .\agent.json --addr :8080
+go run ./cmd/agent -- serve --config .\agent.json --addr :8080
 ```
 
 ## Endpoints

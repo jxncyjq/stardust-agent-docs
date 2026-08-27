@@ -5,219 +5,197 @@ aliases: ["agent serve", "HTTP 服务", "Agent API"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "http", "serve", "api", "sessions"]
-version: "1.3.0"
+version: "2.0.0"
 created: "2026-05-19"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
 children: []
 related_docs:
-  - id: "http-api"
+  - id: "reference-legion-agent-backend-api-001"
+    relation: "extends"
+    path: "./reference-legion-agent-backend-api-001.md"
+  - id: "reference-legion-agent-auth-001"
+    relation: "depends_on"
+    path: "./reference-legion-agent-auth-001.md"
+  - id: "agent-http-api-001"
     relation: "related_to"
     path: "../legion-agent/http-api.md"
 ---
 
 # Legion Agent HTTP 服务
 
+本文是**使用者视角的 curl 速查**。端点全表、请求体字段、错误码口径见 [[reference-legion-agent-backend-api-001|后端系统调用参考]]；鉴权规则见 [[reference-legion-agent-auth-001|鉴权与授权参考]]。
+
 ## 启动
 
 ```powershell
-go run ./cmd -- serve --config .\agent.json --addr :8080
+go run ./cmd/agent -- serve --config .\agent.json --addr :8080
 ```
 
-默认监听地址来自 `server.listen_addr`，也可以用 `--addr` 覆盖。
+默认监听地址来自 `server.listen_addr`（缺省 `:8080`），`--addr` 覆盖。**不配 `listen_addr` 也不传 `--addr`** 时绑到 `127.0.0.1:0`（随机端口，GUI 内嵌形态），并自动进入 loopback 加固。
 
-## 常用接口
+验证：
+
+```powershell
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/readyz
+```
+
+## 常用接口速查
 
 | 接口 | 说明 |
 |------|------|
-| `GET /healthz` | 健康检查 |
-| `GET /readyz` | 依赖可用性检查 |
-| `GET /metrics` | 进程内指标快照，支持 `?format=prometheus` |
-| `GET /debug/diagnostics` | 脱敏诊断信息 |
-| `GET /debug/traces` | 脱敏 trace 快照 |
-| `GET /openapi.json` | OpenAPI 3.1 契约 |
-| `GET /v1/events` | SSE 事件流 |
-| `GET /v1/audit-events` | 审计事件查询 |
-| `GET /v1/quality/evals` | 质量评估结果查询 |
-| `POST /v1/tasks` | 提交 task |
-| `GET /v1/tasks/{task_id}` | 查询 task |
-| `POST /v1/workflows` | 提交 workflow definition |
-| `GET /v1/workflows/{workflow_id}` | 查询 workflow 状态 |
-| `GET /v1/workflows/waiting` | 查询 waiting workflow |
-| `GET /v1/sessions` | 查询 session 列表 |
-| `GET /v1/sessions/{session_id}/turns` | 查询会话 turns |
-| `POST /v1/agents/{agent_id}/messages` | 向 Agent 发送消息 |
-| `GET /v1/agents/{agent_id}/messages` | 查询 Agent inbox/outbox 消息 |
+| `GET /healthz` `GET /readyz` | 存活 / 就绪 |
+| `GET /metrics` | 指标快照，`?format=prometheus` |
+| `GET /debug/diagnostics` `GET /debug/traces` | 脱敏诊断与 trace |
+| `GET /openapi.json` | OpenAPI 3.1 契约（恒公开） |
+| `GET /v1/events` | 平台事件 SSE |
+| `POST /v1/tasks` `GET /v1/tasks` `GET /v1/tasks/{id}` `GET /v1/tasks/{id}/result` | 任务提交、列表、状态、结果 |
+| `POST /v1/tasks/{id}/interrupt` | 中断运行中的任务 |
+| `GET /v1/approvals` `POST /v1/tasks/{id}/approvals/{ticketID}` | Manual 模式审批 |
+| `POST/GET /v1/sessions`、`PATCH/DELETE /v1/sessions/{id}`、`GET /v1/sessions/{id}/turns` | 会话生命周期与历史 |
+| `GET /v1/agents`、`GET/POST /v1/agents/{id}/messages` | 子 Agent 名单与消息 |
+| `POST /v1/workflows`、`GET /v1/workflows/{id}`、`POST /v1/workflows/{id}/events`、`GET /v1/workflows/waiting` | workflow |
+| `GET /v1/audit-events` `GET /v1/runtime-events` `GET /v1/quality/evals` | 治理与观测查询 |
+| `GET /v1/plugins`、`POST /v1/plugins/{name}/grant`、`POST /v1/plugins/{name}/deny` | 插件同意流 |
+| `POST /v1/skills/install`、`/v1/skills/update`、`/v1/skills/uninstall` | 技能管理 |
+| `GET /v1/files` | 下载/预览会话工作目录内文件 |
+| `/v1/browser/sessions/{id}/` 下的 `stream`、`takeover`、`viewport`、`input` | 内置浏览器流与接管 |
 
 ## 认证
 
-配置了 `server.admin_token` 后，管理接口需要 Bearer token：
+配置 `server.admin_token` 后，除 `/openapi.json`（恒公开）和 `public_health_enabled=true` 时的 `/healthz`、`/readyz` 外，全部端点要求 Bearer：
 
 ```powershell
 curl -H "Authorization: Bearer change-me" http://127.0.0.1:8080/metrics
 ```
 
-`server.public_health_enabled` 控制 `/healthz` 和 `/readyz` 是否允许匿名访问。
+`admin_token` 为空 = 全部端点无鉴权放行，只适合纯本机。loopback 加固模式下 token 每次启动重铸并写进握手文件，见 [[reference-legion-agent-auth-001|鉴权与授权参考]]。
 
 ## RBAC 请求头
 
-HTTP 服务使用轻量治理头表达租户和角色：
-
 | 请求头 | 说明 |
 |--------|------|
-| `X-Company-ID` | 当前公司/租户 ID，不传时使用默认 company |
-| `X-Subject-ID` | 当前调用主体 ID，用于审计记录 |
-| `X-Role` | 角色，支持 `admin`、`operator`、`viewer` |
-
-角色权限：
+| `X-Company-ID` | 租户 ID |
+| `X-Subject-ID` | 调用主体，用于审计 |
+| `X-Role` | `admin` / `operator` / `viewer` |
 
 | 角色 | 能力 |
 |------|------|
-| `admin` 或空值 | 全部管理能力 |
-| `operator` | 可读 audit、quality、task、workflow |
-| `viewer` | 可读 quality、task、workflow；不能读取 audit |
+| `admin`（`require_identity=false` 时空角色等同 admin） | 全部，含插件 grant/deny |
+| `operator` | 读 audit、quality、task、workflow、plugin |
+| `viewer` | 读 quality、task、workflow；不能读 audit / plugin |
 
-被 RBAC 拒绝的请求会写入审计事件。
+`server.require_identity=true` 后缺身份即拒。被拒的跨公司访问会写审计事件 `access_denied.cross_company`。
 
-## OpenAPI 与错误契约
-
-```powershell
-curl http://127.0.0.1:8080/openapi.json
-```
-
-`/openapi.json` 默认公开，用于外部系统生成客户端或核对接口契约。契约包含统一 `ErrorResponse`，业务失败会返回结构化错误，而不是只返回纯文本。
-
-## 提交 Task
+## 提交与查询 Task
 
 ```powershell
 curl -X POST "http://127.0.0.1:8080/v1/tasks" `
   -H "Authorization: Bearer change-me" `
   -H "Content-Type: application/json" `
   -d "{\"id\":\"task-http-1\",\"company_id\":\"company-1\",\"agent_id\":\"cli-agent\",\"input\":\"总结当前 Agent 能力\"}"
+
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/tasks/task-http-1"
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/tasks/task-http-1/result"
 ```
 
-查询：
+`/result` 除答案文本外还返回 token 用量（prompt / completion / cached / total）、耗时和 `generated_files` 文件链接。
+
+中断长任务：
 
 ```powershell
-curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/tasks/task-http-1"
+curl -X POST -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/tasks/task-http-1/interrupt"
 ```
 
-## 提交 Workflow
+## 会话
 
-Workflow 用于服务端多任务编排。最小示例：
+```powershell
+# 新建（id 由服务端生成）
+curl -X POST "http://127.0.0.1:8080/v1/sessions" `
+  -H "Authorization: Bearer change-me" -H "Content-Type: application/json" `
+  -d "{\"company_id\":\"cli-company\",\"agent_id\":\"cli-agent\",\"title\":\"接口验证\",\"mode\":\"auto\",\"working_dir\":\"F:/work/demo\"}"
+
+# 列表 / turns
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions?company_id=cli-company&agent_id=cli-agent"
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/session-123/turns?limit=6"
+
+# 改标题 / 归档 / 切换工作模式
+curl -X PATCH "http://127.0.0.1:8080/v1/sessions/session-123" `
+  -H "Authorization: Bearer change-me" -H "Content-Type: application/json" `
+  -d "{\"title\":\"改个名\",\"mode\":\"manual\"}"
+
+# 删除（同时删除该会话的磁盘目录）
+curl -X DELETE -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/session-123"
+```
+
+`working_dir` 一旦设定就不能改指向别的目录（改会 400）；未知字段会被 400 拒绝而不是静默忽略。
+
+## 提交 Workflow
 
 ```powershell
 curl -X POST "http://127.0.0.1:8080/v1/workflows" `
   -H "Authorization: Bearer change-me" `
   -H "Content-Type: application/json" `
   -d "{\"id\":\"wf-quick-1\",\"root\":{\"id\":\"flow\",\"kind\":\"sequence\",\"children\":[{\"id\":\"research\",\"kind\":\"agent_task\",\"task\":{\"id\":\"research-1\",\"agent_id\":\"researcher\",\"input\":\"调研 session cache 实现\"}},{\"id\":\"write\",\"kind\":\"agent_task\",\"task\":{\"id\":\"write-1\",\"agent_id\":\"writer\",\"input\":\"根据 {{tasks.research-1.result}} 整理说明\"}}]}}"
-```
 
-查询：
-
-```powershell
 curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/workflows/wf-quick-1"
 ```
 
-### Workflow 与 session 历史
-
-Workflow 不会自动读取某个 TUI session。它的上下文传递主要依赖：
-
-- workflow 内部 `{{tasks.<task_id>.result}}` 结果占位符。
-- TaskLedger `--task` 任务详情。
-- AgentMessage inbox/outbox。
-- 人工把 session 摘要写入 `task.input`。
-
-如果需要让 workflow 接着某个 TUI session 的历史继续处理，先查询 session turns：
+Workflow 不会自动挂载某个 TUI session。要让它接着历史对话工作，先取 turns 再把摘要写进 `task.input`：
 
 ```powershell
 curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/session-1770000000000000000/turns?limit=8"
 ```
 
-再把摘要放进 workflow 的 `task.input`：
-
-```json
-{
-  "id": "wf-from-session",
-  "root": {
-    "id": "writer",
-    "kind": "agent_task",
-    "task": {
-      "id": "writer-from-session-1",
-      "agent_id": "writer",
-      "input": "基于 session-1770000000000000000 的历史摘要：<粘贴摘要>，继续整理说明。"
-    }
-  }
-}
-```
-
-## Session 查询
-
-```powershell
-curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions?company_id=cli-company&agent_id=cli-agent"
-curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/session-123/turns?limit=6"
-```
-
-更完整的 API 说明见 [[../legion-agent/http-api|Legion Agent HTTP API]]。
-
 ## Agent 消息 API
 
-给 writer 发送消息：
-
 ```powershell
+# 发送
 curl -X POST "http://127.0.0.1:8080/v1/agents/writer/messages" `
-  -H "Authorization: Bearer change-me" `
-  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer change-me" -H "Content-Type: application/json" `
   -d "{\"company_id\":\"company-1\",\"from\":\"researcher\",\"task_id\":\"TASK-20260525-001\",\"type\":\"handoff\",\"summary\":\"调研完成，请整理说明\",\"artifact\":\"docs/research/session-cache.md\"}"
-```
 
-查询 writer 未读消息：
-
-```powershell
+# 查询未读 / 查询并标记已读
 curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/agents/writer/messages?company_id=company-1&status=unread"
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/agents/writer/messages?company_id=company-1&status=unread&mark_read=true"
 ```
 
-查询并标记已读：
+查询子 Agent 名单（GUI 选择器用的就是它）：
 
 ```powershell
-curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/agents/writer/messages?company_id=company-1&status=unread&mark_read=true"
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/agents"
 ```
 
 ## SSE 事件流
 
-订阅全部事件：
-
 ```powershell
 curl -N -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/events"
+curl -N -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/events?type=task_completed"
 ```
 
-按类型过滤：
+事件类型与 `RuntimeEvent.Type` 同名：`task_started`、`inference_completed`、`tool_call_requested`、`tool_executed`、`tool_failed`、`tool_result`、`tool_loop_broken`、`subtask_completed`、`task_completed`、`task_cancelled`。`prompt`、`input`、`secret`、`api_key`、`token` 等敏感键出站前剔除，单个字符串超 512 字符截断。
+
+不想开长连接时用 `GET /v1/runtime-events` 拉最近 200 条。
+
+## 生成文件下载
 
 ```powershell
-curl -N -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/events?type=task.completed"
+curl -H "Authorization: Bearer change-me" `
+  "http://127.0.0.1:8080/v1/files?session_id=session-123&path=docs%2Freport.md&download=1" -o report.md
 ```
 
-事件流会对 `prompt`、`input`、`secret`、`api_key`、`token` 等敏感字段做脱敏。TUI 中的 `/event` 适合人工查看最近事件；SSE 更适合外部系统订阅。
+链接直接用 `/v1/tasks/{id}/result` 返回的 `url` / `download_url`；服务端只存工作区相对路径，链接每次现拼，改 `server.file_base_url` 立即生效。路径越出会话工作目录返回 403。
 
 ## 治理查询
 
-查询审计事件：
-
 ```powershell
-curl -H "Authorization: Bearer change-me" `
-  -H "X-Role: admin" `
-  -H "X-Company-ID: company-1" `
+curl -H "Authorization: Bearer change-me" -H "X-Role: admin" -H "X-Company-ID: company-1" `
   "http://127.0.0.1:8080/v1/audit-events"
-```
 
-查询质量评估：
-
-```powershell
-curl -H "Authorization: Bearer change-me" `
-  -H "X-Role: viewer" `
-  -H "X-Company-ID: company-1" `
+curl -H "Authorization: Bearer change-me" -H "X-Role: viewer" -H "X-Company-ID: company-1" `
   "http://127.0.0.1:8080/v1/quality/evals?agent_id=cli-agent"
 ```
 
@@ -232,4 +210,12 @@ curl -H "Authorization: Bearer change-me" http://127.0.0.1:8080/debug/diagnostic
 curl -H "Authorization: Bearer change-me" http://127.0.0.1:8080/debug/traces
 ```
 
-`/metrics` 返回进程内计数指标，Prometheus 模式用于接入外部监控。`/debug/diagnostics` 和 `/debug/traces` 会输出脱敏诊断信息，用于确认配置、存储、MaaS、workflow、trace 和运行状态。
+每个响应都带 `X-Request-ID`（请求带同名头则透传），日志里可以按它对齐一次请求。
+
+## 相关文档
+
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — 端点全表、请求体、错误码
+- [[reference-legion-agent-auth-001|鉴权与授权参考]] — token / 握手 / RBAC
+- [[reference-legion-agent-integration-001|接入参考]] — 客户端接入形态
+- [[reference-legion-agent-session-001|会话连续性]]
+- [[agent-http-api-001|Legion Agent HTTP API]]

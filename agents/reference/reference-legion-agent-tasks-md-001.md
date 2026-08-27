@@ -5,9 +5,9 @@ aliases: ["tasks.md", "任务账本", "多 Agent 任务协作", "Agent handoff"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "tasks", "multi-agent", "handoff", "message", "collaboration"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-05-19"
-updated: "2026-05-24"
+updated: "2026-08-27"
 author: "codex"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -363,3 +363,10 @@ ready -> cancelled
 | `read_messages` | `to`, `from`, `status`, `task_id`, `limit`, `mark_read` | 读取 inbox/outbox；`mark_read=true` 会把返回的 unread 消息标记为 read |
 
 TUI `/send <agent> <message>` 会向目标 Agent 写入 unread `AgentMessage`；`/inbox` 默认查看当前 Agent 的未读消息；`@agent --inbox ...` 会把目标 Agent 的 unread 消息注入 prompt，并在目标 Agent 成功运行后标记为 read。文件规范仍可作为人类可读的协作视图和导出格式，`tasks/events/*.jsonl` 可作为 SQLite message bus 的导入源或审计导出格式。
+
+## 相关文档
+
+- [[reference-legion-agent-tools-001|工具能力]] — TaskLedger 与 AgentMessage 工具
+- [[reference-legion-agent-multi-agent-usage-001|多 Agent 调用]] — `--task` 绑定与消息交接
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — `tasks.*` 配置
+- [[multi-agent-collaboration|多 Agent 协作]] — workflow 与协作方式对比

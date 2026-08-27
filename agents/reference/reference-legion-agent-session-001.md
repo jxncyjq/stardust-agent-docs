@@ -5,17 +5,20 @@ aliases: ["session", "会话连续", "conversation turns"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "session", "sqlite", "context", "conversation"]
-version: "1.3.0"
+version: "2.0.0"
 created: "2026-05-19"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
 children: []
 related_docs:
-  - id: "sqlite-schema"
+  - id: "agent-sqlite-schema-001"
     relation: "related_to"
     path: "../legion-agent/sqlite-schema.md"
+  - id: "reference-legion-agent-backend-api-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-backend-api-001.md"
 ---
 
 # Legion Agent 会话连续性
@@ -45,6 +48,7 @@ related_docs:
 | `model_profile` | 使用的模型 profile |
 | `role` | `user` 或 `assistant` |
 | `content` | 已按 `max_turn_chars` 截断的内容 |
+| `prompt_tokens` / `completion_tokens` / `cached_tokens` / `total_tokens` | 该轮 token 消耗（老数据为 0，只有新会话有值） |
 
 ## 推荐配置
 
@@ -112,7 +116,7 @@ related_docs:
 默认配置 `restore_latest_on_tui_start=true` 时，TUI 启动会自动恢复当前 Agent 最近一次 session：
 
 ```powershell
-go run ./cmd -- tui --config .\agent.json
+go run ./cmd/agent -- tui --config .\agent.json
 ```
 
 进入后可以直接继续提问，Agent 会读取最近 `default_recent_turns` 轮 turn 并注入上下文。
@@ -140,6 +144,22 @@ curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/ses
 ```
 
 HTTP 查询接口只读取 session/turn，不会自动把历史恢复到某个正在运行的 TUI。真正继续对话仍建议通过 TUI `/switch`。
+
+## 工作模式与工作目录
+
+会话上除了历史，还挂着两个决定任务行为的字段：
+
+| 字段 | 取值 | 影响 |
+|------|------|------|
+| `mode` | `auto`（默认）/ `plan` / `manual` | 该会话派生的每个任务都继承它：`plan` 只给只读工具，`manual` 把 Sensitive 工具挡在人工审批后 |
+| `working_dir` | 绝对目录 | 决定工具沙箱根与 `agents.md` 项目根，任务创建时继承 |
+
+TUI 用 `/mode`、`/cwd` 设置，HTTP 用 `POST /v1/sessions` 或 `PATCH /v1/sessions/{id}`。
+
+两条硬约束：
+
+- `working_dir` **一次性可设**：空 → 有值可以，重设同值可以，改成另一个目录直接拒绝（TUI 报错 / HTTP 400）。会话磁盘状态按写入时的目录归档，改指向会遗弃既有状态。
+- 提交任务时若会话的 `working_dir` 指向不存在的目录，`POST /v1/tasks` 返回 400，而不是让任务落到错误的根目录上跑。
 
 ## Session 与 Workflow 的关系
 
@@ -193,16 +213,29 @@ curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/ses
 
 如果需要更可靠的跨 Agent 交接，建议使用 `--task` 或 `--inbox`，见 [[reference-legion-agent-multi-agent-usage-001|多 Agent 调用]]。
 
-## HTTP 查询
+## 会话的 HTTP 面
 
-`agent serve` 在 SQLite 存储模式下会把 session store 暴露为只读 HTTP 查询接口：
+`agent serve` 在 SQLite 存储模式下把会话暴露为完整的 CRUD 面，不只是只读查询：
+
+| 端点 | 用途 |
+|------|------|
+| `POST /v1/sessions` | 新建会话，可带 `mode`、`working_dir`；id 由服务端生成 |
+| `GET /v1/sessions` | 会话列表，按最近更新倒序，支持 `company_id`、`agent_id` |
+| `GET /v1/sessions/{id}/turns` | 会话 turns，`limit=0` 或省略即全量 |
+| `PATCH /v1/sessions/{id}` | 改 `title` / `project` / `archived` / `mode` / `working_dir` |
+| `DELETE /v1/sessions/{id}` | 删除会话行，并删掉它在磁盘上的会话目录 |
 
 ```powershell
 curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions?company_id=cli-company&agent_id=cli-agent"
 curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/session-123/turns?limit=6"
 ```
 
-`/v1/sessions` 返回 `AgentSession` 数组，按最近更新时间倒序排列。`/v1/sessions/{session_id}/turns` 返回 `ConversationTurn` 数组，`limit=0` 或省略表示返回该 session 的全部 turns。
+两个契约细节：
+
+- 请求体里出现服务端不认识的字段会被 **400 拒绝**，不会被静默丢弃（典型如客户端自带 `id`）。
+- 磁盘目录删除失败时返回 500 而不是「删除成功」——库里行没了、磁盘还留着残留状态，这必须让调用方看见。
+
+HTTP 面只读/改数据，不会把历史「恢复」到某个正在运行的 TUI；继续对话仍走 TUI `/switch`。
 
 ## 排查
 
@@ -214,3 +247,11 @@ curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/sessions/ses
 4. 是否刚执行过 `/new` 或 `/clear-session`。
 5. 当前是否切换到了另一个 session。
 6. `agent.db` 是否被删除或恢复到了旧备份。
+
+## 相关文档
+
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — `session.*` 与 `workspace.*` 配置
+- [[reference-legion-agent-tui-001|TUI 使用]] — `/new`、`/sessions`、`/switch`、`/mode`、`/cwd`
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — 会话与任务端点
+- [[reference-legion-agent-multi-agent-usage-001|多 Agent 调用]] — 同一会话内的多 Agent 协作
+- [[agent-sqlite-schema-001|agent.db 数据结构]] — `agent_sessions` / `conversation_turns` 表

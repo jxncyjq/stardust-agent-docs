@@ -5,9 +5,9 @@ aliases: ["@researcher", "@writer", "子 Agent 调用"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "multi-agent", "tui", "routing"]
-version: "1.1.0"
+version: "2.0.0"
 created: "2026-05-19"
-updated: "2026-05-25"
+updated: "2026-08-27"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -23,13 +23,14 @@ related_docs:
 
 # Legion Agent 多 Agent 调用
 
-多 Agent 有三种常用入口：
+多 Agent 有四种入口：
 
 | 入口 | 适合场景 |
 |------|----------|
 | TUI `@agent` | 人类手动委托，最快上手 |
+| `delegate_task` 工具 | 模型自己把子任务派给其他 Agent（只有根编排者有这个工具） |
 | TaskLedger `--task` | 多 Agent 围绕同一任务交接上下文 |
-| HTTP/workflow | 服务端自动编排多个 Agent |
+| HTTP / workflow | 服务端自动编排多个 Agent |
 
 ## 注册子 Agent
 
@@ -143,9 +144,33 @@ GET /v1/agents/writer/messages?company_id=company-1&status=unread&mark_read=true
 Authorization: Bearer <admin-token>
 ```
 
+## 模型自主委派：delegate_task
+
+根编排者（默认运行时）额外持有三个工具，子 Agent（worker）没有：
+
+| 工具 | 说明 | 为什么不给 worker |
+|------|------|-------------------|
+| `delegate_task` | 把子任务派给其他 Agent，子角色 `leaf`（默认，不能再派）或 `orchestrator`（可嵌套至深度上限） | worker 再派 worker 会让委派树无界 |
+| `session_search` | 跨会话检索历史 | 查询不带公司/Agent 过滤，会越过 worker 的沙箱与简报边界 |
+| `moa_consult` | 多模型 MoA 咨询 | 会绕过该 worker 被指派的模型 profile 并放大成本 |
+
+这个不对称是设计而非遗漏，有测试锁定。
+
+除此之外，子 Agent 与主 Agent 的工具集相同——**包括写文件**（子 Agent 现在用的是读写工作区 registry，不再是只读）。要限制某个子 Agent，用它自己配置里的 `runtime.disabled_tools`。
+
+`delegate_task` 是 Sensitive 工具：Manual 模式下要人工审批才会真的派出去。子任务完成会发 `subtask_completed` 事件。
+
+## 查询可用 Agent
+
+```powershell
+curl -H "Authorization: Bearer change-me" "http://127.0.0.1:8080/v1/agents"
+```
+
+返回 `agents` 数组，就是配置 `agents` 映射的 key。默认 Agent 不在列表里——提交任务时把 `agent_id` 留空即可命中它。
+
 ## 当前边界
 
-Agent 间 inbox/outbox 的基础数据模型、工具、TUI 人工入口、`@agent --inbox` 消息式 handoff、workflow result handoff 和 HTTP message API 已经可用。复杂协作当前仍优先通过 TaskLedger、同一 session 的上下文、人工提示和 Workflow `task.agent_id` 路由完成衔接。
+Agent 间 inbox/outbox 的数据模型、工具、TUI 人工入口、`@agent --inbox` 消息式 handoff、workflow result handoff、HTTP message API 与模型自主 `delegate_task` 都已可用。复杂协作仍优先通过 TaskLedger、同一 session 的上下文、人工提示和 Workflow `task.agent_id` 路由衔接——没有全局自动调度器。
 
 ## tasks.md 协作账本
 
@@ -194,3 +219,11 @@ curl -X POST "http://127.0.0.1:8080/v1/agents/writer/messages" `
 ```text
 @writer --inbox 处理外部系统发来的未读消息
 ```
+
+## 相关文档
+
+- [[reference-legion-agent-tools-001|工具能力]] — `delegate_task` / `session_search` / `moa_consult` 与工具差异
+- [[reference-legion-agent-tasks-md-001|tasks.md 协作规范]] — 共享任务账本协议
+- [[multi-agent-collaboration|多 Agent 协作]] — workflow 并发与跨进程协作
+- [[reference-legion-agent-backend-api-001|后端系统调用参考]] — `/v1/agents`、消息与任务端点
+- [[reference-legion-agent-config-context-001|配置与上下文文件]] — 子 Agent 配置与 `disabled_tools`
