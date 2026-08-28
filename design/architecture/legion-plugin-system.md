@@ -7,7 +7,7 @@ category: "design/architecture"
 tags: ["legion", "plugin", "cordis", "wasm", "wazero", "lifecycle", "architecture"]
 version: "1.4.0"
 created: "2026-08-16"
-updated: "2026-08-26"
+updated: "2026-08-28"
 author: "jxncyjq"
 status: "draft"
 parent: null
@@ -22,6 +22,9 @@ related_docs:
   - id: "analysis-dsh-insights-005"
     relation: "references"
     path: "../analysis/deepseek-harness/05-insights.md"
+  - id: "reference-legion-agent-plugins-001"
+    relation: "related_to"
+    path: "../../agents/reference/reference-legion-agent-plugins-001.md"
 ---
 
 # Legion 插件系统设计方案（借鉴 Cordis）

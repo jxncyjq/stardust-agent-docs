@@ -7,7 +7,7 @@ category: "agents/reference"
 tags: ["agent", "cli", "commands", "backup", "data", "plugins"]
 version: "2.0.0"
 created: "2026-05-19"
-updated: "2026-08-27"
+updated: "2026-08-28"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -22,6 +22,9 @@ related_docs:
   - id: "agent-storage-ops-001"
     relation: "related_to"
     path: "../legion-agent/storage-ops.md"
+  - id: "reference-legion-agent-plugins-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-plugins-001.md"
 ---
 
 # Legion Agent CLI 命令速查
@@ -129,8 +132,11 @@ go run ./cmd/agent -- plugins reload --config .\agent.json
 - `--allowed-hosts` / `--allowed-paths` 允许**收窄**到插件声明的子集，但不能出现插件没声明过的名字。
 - `install` 与 `grant` 都**不会**自动 reload 运行中的服务，改完执行 `plugins reload`。
 - 签名：`plugins keygen` 生成密钥对（私钥文件已存在时拒绝覆盖），`plugins sign <dir>` 对 `plugin.json` 原始字节签名生成 `plugin.sig`。部署侧 `plugins.require_signature=true` 时才验签。
+- **`status` 与 `reload` 是「本进程视图」**：两者读的是 `agent serve` 装配的那个 loader，跨进程没有视图。在一个独立的 CLI 进程里执行会得到 `no plugin loader in this process: plugins are assembled by 'agent serve'` —— 它明说自己看不到，而不是回一个像「没有插件」的空答案。要从外部查运行中的部署，用 `GET /v1/plugins` 或 GUI 面板。
 
-同一套授权也可以走 HTTP：`GET /v1/plugins`、`POST /v1/plugins/{name}/grant|deny`（仅 admin 角色）。
+同一套授权也可以走 HTTP：`GET /v1/plugins`、`POST /v1/plugins/{name}/grant|deny|resolve`（`resolve` 只取回并验签声明，不写授权、不触发收敛）。
+
+插件的编写（ABI / host 函数）、`plugin.json` 规范、打包发布与最小 MVP 见 [[reference-legion-agent-plugins-001|WASM 插件参考手册]]。
 
 <!-- @end-section -->
 
