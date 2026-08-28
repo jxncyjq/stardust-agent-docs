@@ -22,6 +22,9 @@ related_docs:
   - id: "reference-legion-agent-auth-001"
     relation: "related_to"
     path: "./reference-legion-agent-auth-001.md"
+  - id: "reference-legion-agent-plugins-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-plugins-001.md"
 ---
 
 # Legion Agent 工具能力

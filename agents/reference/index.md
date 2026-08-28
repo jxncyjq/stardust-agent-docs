@@ -7,7 +7,7 @@ category: "agents/reference"
 tags: ["index", "reference", "manual"]
 version: "2.0.0"
 created: "2026-05-18"
-updated: "2026-08-27"
+updated: "2026-08-28"
 author: "jxncyjq"
 status: "published"
 parent: null
@@ -20,6 +20,7 @@ children:
   - "reference-legion-agent-multi-agent-usage-001"
   - "reference-legion-agent-tasks-md-001"
   - "reference-legion-agent-tools-001"
+  - "reference-legion-agent-plugins-001"
   - "reference-legion-agent-cli-001"
   - "reference-legion-agent-http-service-001"
   - "reference-legion-agent-backend-api-001"
@@ -52,6 +53,7 @@ related_docs:
 | [[reference-legion-agent-multi-agent-usage-001\|多 Agent 调用]] | 子 Agent 注册、`@agent`、`--task`、`--inbox`、`delegate_task` | multi-agent, routing |
 | [[reference-legion-agent-tasks-md-001\|tasks.md 协作规范]] | 共享任务账本、消息交接、归档与膨胀控制 | tasks, handoff |
 | [[reference-legion-agent-tools-001\|工具能力]] | lazy 元工具协议、工具循环、文件/任务/消息/网络/浏览器工具、模式与审批 | tools, browser, toolauth |
+| [[reference-legion-agent-plugins-001\|WASM 插件手册]] | 插件 ABI、plugin.json、打包签名发布、install/grant/resolve、状态与收敛 | plugin, wasm, abi, signing |
 | [[reference-legion-agent-cli-001\|CLI 命令速查]] | `run`、`tui`、`serve`、`plugins`、`backup`、`data`、`skill` | cli, commands |
 | [[reference-legion-agent-troubleshooting-001\|常见问题排查]] | TUI、模型、工具、HTTP、token 膨胀、日志与数据库 | troubleshooting |
 
@@ -90,6 +92,7 @@ related_docs:
 | 在 TUI 里用 `/`、`@`、`/mode`、`/cwd` | [[reference-legion-agent-tui-001\|TUI 使用]] |
 | 让多个 Agent 交换任务上下文 | [[reference-legion-agent-tasks-md-001\|tasks.md 协作规范]]、[[reference-legion-agent-multi-agent-usage-001\|多 Agent 调用]] |
 | 了解模型能调哪些工具、为什么没真实调用 | [[reference-legion-agent-tools-001\|工具能力]] |
+| 写一个 WASM 插件 / 发布 / 装到部署里 | [[reference-legion-agent-plugins-001\|WASM 插件手册]] |
 | 保持多轮上下文 / 查询历史 session | [[reference-legion-agent-session-001\|会话连续性]] |
 | 知道后端到底有哪些接口 | [[reference-legion-agent-backend-api-001\|后端系统调用参考]] |
 | 配 token、RBAC、审批、插件授权 | [[reference-legion-agent-auth-001\|鉴权与授权参考]] |
@@ -111,6 +114,7 @@ related_docs:
 | 配置与模型 | [[reference-legion-agent-config-context-001\|配置与上下文文件]]、[[reference-maas-model-profiles-001\|MaaS Model Profiles]] |
 | 人格化上下文 | [[reference-legion-agent-config-context-001\|配置与上下文文件]]、[[agent-persona-files-001\|运行时上下文文件]] |
 | 工具与浏览器 | [[reference-legion-agent-tools-001\|工具能力]] |
+| 插件（编写/发布/安装） | [[reference-legion-agent-plugins-001\|WASM 插件手册]] |
 | 多轮上下文 | [[reference-legion-agent-session-001\|会话连续性]] |
 | 多 Agent 路由 | [[reference-legion-agent-multi-agent-usage-001\|多 Agent 调用]]、[[multi-agent-collaboration\|多 Agent 协作]] |
 | Agent 间消息 | [[reference-legion-agent-multi-agent-usage-001\|多 Agent 调用]]、[[reference-legion-agent-backend-api-001\|后端系统调用参考]] |

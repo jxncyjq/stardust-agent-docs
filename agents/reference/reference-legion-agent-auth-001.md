@@ -25,6 +25,9 @@ related_docs:
   - id: "agent-governance-rbac-001"
     relation: "related_to"
     path: "../legion-agent/governance-rbac.md"
+  - id: "reference-legion-agent-plugins-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-plugins-001.md"
 ---
 
 # Legion Agent 鉴权与授权参考

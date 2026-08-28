@@ -5,9 +5,9 @@ aliases: ["docs index", "文档总索引"]
 type: "reference"
 category: "index"
 tags: ["index", "docs", "navigation"]
-version: "3.4.0"
+version: "3.5.0"
 created: "2026-06-24"
-updated: "2026-08-27"
+updated: "2026-08-28"
 author: "jxncyjq"
 status: "published"
 parent: null
@@ -20,7 +20,7 @@ related_docs:
 
 # 文档索引
 
-> 全仓库 Markdown 文档统一索引，由各文档 Front Matter 自动汇总。**索引表当前收录 299 篇文档（仓库内 `.md` 共 327 个，其余为未纳入索引的临时/归档文件）。** 新建文档后向「索引表」追加一行。
+> 全仓库 Markdown 文档统一索引，由各文档 Front Matter 自动汇总。**索引表当前收录 300 篇文档（仓库内 `.md` 共 328 个，其余为未纳入索引的临时/归档文件）。** 新建文档后向「索引表」追加一行。
 
 <!-- @section: index-table -->
 ## 索引表
@@ -58,6 +58,7 @@ related_docs:
 | [[reference-legion-agent-auth-001]] | Legion Agent 鉴权与授权参考 | reference | `agents/reference/reference-legion-agent-auth-001.md` | agent, auth, rbac, security, token, approval |
 | [[reference-legion-agent-backend-api-001]] | Legion Agent 后端系统调用参考 | reference | `agents/reference/reference-legion-agent-backend-api-001.md` | agent, backend, http, api, sse, task, session |
 | [[reference-legion-agent-cli-001]] | Legion Agent CLI 命令速查 | reference | `agents/reference/reference-legion-agent-cli-001.md` | agent, cli, commands, backup, data, plugins |
+| [[reference-legion-agent-plugins-001]] | Legion Agent WASM 插件参考手册 | reference | `agents/reference/reference-legion-agent-plugins-001.md` | agent, plugin, wasm, wazero, abi, signing, capability, cli |
 | [[reference-legion-agent-config-context-001]] | Legion Agent 配置与上下文文件 | reference | `agents/reference/reference-legion-agent-config-context-001.md` | agent, configuration, context-files, maas, persona |
 | [[reference-legion-agent-http-service-001]] | Legion Agent HTTP 服务 | reference | `agents/reference/reference-legion-agent-http-service-001.md` | agent, http, serve, api, sessions |
 | [[reference-legion-agent-integration-001]] | Legion Agent 接入参考 | reference | `agents/reference/reference-legion-agent-integration-001.md` | agent, integration, gui, sse, client, backend |
@@ -554,6 +555,7 @@ related_docs:
 - [[reference-legion-agent-auth-001]] — Legion Agent 鉴权与授权参考
 - [[reference-legion-agent-backend-api-001]] — Legion Agent 后端系统调用参考
 - [[reference-legion-agent-cli-001]] — Legion Agent CLI 命令速查
+- [[reference-legion-agent-plugins-001]] — Legion Agent WASM 插件参考手册
 - [[reference-legion-agent-config-context-001]] — Legion Agent 配置与上下文文件
 - [[reference-legion-agent-http-service-001]] — Legion Agent HTTP 服务
 - [[reference-legion-agent-integration-001]] — Legion Agent 接入参考

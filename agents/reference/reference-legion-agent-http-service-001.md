@@ -22,6 +22,9 @@ related_docs:
   - id: "agent-http-api-001"
     relation: "related_to"
     path: "../legion-agent/http-api.md"
+  - id: "reference-legion-agent-plugins-001"
+    relation: "related_to"
+    path: "./reference-legion-agent-plugins-001.md"
 ---
 
 # Legion Agent HTTP 服务
