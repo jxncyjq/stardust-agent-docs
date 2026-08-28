@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-08-28"
 updated: "2026-08-28"
 author: "jxncyjq"
@@ -402,6 +402,7 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 | `limits.max_memory_pages` | 256 | 部署级天花板；0 = 部署不声明，用插件自己的 |
 | `limits.max_instances` | 4 | 同上 |
 | `apply_wait_ms` | 60000 | 收敛等待**任务边界**的上限（不是固定等待） |
+| `health.max_consecutive_faults` | 5 | **连续**故障（timeout·trap·abi）达到此数即自动卸载该插件；一次成功调用清零；`denied` 与失败的 `ToolResult` 都不计。0 不是「不限」，是配置错误，Load 期即拒绝 |
 
 > 所有相对路径按 **进程工作目录** 解析，与配置文件位置无关：`agent serve --config /etc/agent.json` 从 `/srv` 启动读的是 `/srv/plugins.json`。配置不在工作目录时请用绝对路径。
 
@@ -513,6 +514,31 @@ GUI 与 CLI 走**同一批校验函数**（`internal/plugin/consent`），不是
 
 收敛在**任务边界**发生：`apply_wait_ms` 是等待边界的**上限**而非固定等待，空闲的 serve 上收敛瞬间完成。
 
+### 8.1 运行期健康度
+
+一次进插件的调用失败，按四类归入 `plugin/call_failed` 事件的 `category`：
+
+| category | 含义 | 计入健康度 |
+|---|---|---|
+| `timeout` | 超过 `limits.timeout_ms` 没答上来 | ✅ |
+| `trap` | wasm trap：越界、`unreachable`、除零 | ✅ |
+| `abi` | ABI 违约：`plugin_alloc` 返回 0、结果指针越界、返回体解不开 | ✅ |
+| `denied` | host 函数按能力/白名单拒绝 | ❌ 插件越界，不是坏了 |
+
+另外两种**根本不是故障**：guest 返回 `{"success":false}`（工具说「我没做成」，是业务答案），以及调用方自己取消（插件没机会答——否则多按几次中断就能卸掉一个健康插件）。
+
+计数是**连续**的：一次答上来就清零。连续故障达到 `health.max_consecutive_faults` 时，该插件被**自动卸载**，状态转 `failed`，`detail` 形如：
+
+```
+health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: guest trap)
+```
+
+同时发 `plugin/unloaded` 且 `reason=health`——它是唯一一次没人要求的卸载，扫事件时要能与改清单区分开。
+
+**不会自动重试，也不会自动装回来**：trap 到阈值的插件下一次多半还是 trap，自动重装会把一次看得见的卸载变成一个看不见的循环。修好包之后走 `agent plugins reload`。
+
+卸载时若等不到在途调用收敛（`drain` 超时），发 `plugin/unload_leaked`，带**在途数**与实际等待时长——「还有 3 个调用在里面」和「还有 1 个」的处置完全不同。
+
 `reload` 有一条要记住的限制：**信任集在 serve 装配时冻结**，运行中换不了。收紧了 keyring 再 `reload`，得到的是**新清单 + 旧信任集**；策略变更必须重启 serve。
 
 <!-- @section: troubleshooting -->
@@ -533,6 +559,8 @@ GUI 与 CLI 走**同一批校验函数**（`internal/plugin/consent`），不是
 | 响应/文件内容被截断 | 命中 1 MiB 上限，看 `truncated` 字段 |
 | `plugins reload` 说没有 loader | 在 CLI 进程里跑的；loader 属于 `agent serve` 那个进程 |
 | 状态一直 `pending` | 收敛没跑：还在等任务边界，或另一个 apply 正在进行 |
+| `detail` 里出现 `health: N consecutive faults` | 插件连续失败到阈值被**自动卸载**；看 `category` 判断是 timeout/trap/abi，修好包后 `reload` |
+| 出现 `plugin/unload_leaked` 事件 | 卸载时仍有在途调用没收敛完；事件里的 `inflight` 是留下的调用数 |
 | 422 之后那条一直是 `load_failed` | 不可信的包留在缓存里了；仓内暂无 eviction API，需手工清 `cache/sha256/<digest>` |
 
 <!-- @section: related -->
