@@ -56,6 +56,10 @@ related_docs:
 
 以下每一步都在 Windows + Git Bash 下**照本文原样跑过一遍**（2026-08-28），终点是 `GET /v1/plugins` 返回 `state:"loaded"`。前缀 `agent` 指 `go build ./cmd/agent` 产出的二进制（源码运行时是 `go run ./cmd/agent --`）。
 
+> 这一节的成品在 server 仓 `plugin_example/`：同样的 guest、构建与签名脚本、
+> 以及一组用真实 wazero 宿主跑的测试（`go test ./plugin_example/...`）。想直接
+> 拿来改，从那里开始比从这里抄快。
+
 ### 2.1 准备目录
 
 ```bash
