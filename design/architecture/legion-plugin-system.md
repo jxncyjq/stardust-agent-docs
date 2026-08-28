@@ -5,7 +5,7 @@ aliases: ["legion plugin system", "Legion 插件系统", "plugin lifecycle kerne
 type: "design"
 category: "design/architecture"
 tags: ["legion", "plugin", "cordis", "wasm", "wazero", "lifecycle", "architecture"]
-version: "1.4.0"
+version: "1.5.0"
 created: "2026-08-16"
 updated: "2026-08-28"
 author: "jxncyjq"
@@ -746,7 +746,18 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**P3-A5b 远程来源**~~ | HTTPS tarball 拉取：条目写 `source` + 强制 `sha256:` 摘要；按流校验、不符不落盘；内容寻址缓存 `plugins.cache/sha256/<digest>/`，命中不联网；解包拒绝路径穿越 / 非普通文件 / 解压炸弹，且整包拒绝；`allow_insecure_sources` 只放开 scheme，缺省拒绝明文、开着则每条打 Warn；摘要与签名是两道独立的门（见 §7） | ✅ **已交付** 分支 `feat/plugin-remote-source`（PR 待开，整支审查后决定编号） | 插件不必先落到部署方磁盘上，重启与离线部署不依赖网络 |
 | ~~**P3-A5c 准入体验**~~ | `agent plugins install`：拉取、验摘要、验签（后者仅在部署要求时）、登记进 `plugins.json`，**默认零授权**（`enabled: false`，无 `grant` 字段；显式 `--grant` 可一步授权）；`agent plugins grant\|deny` 是授权/撤销的显式动作，只接受插件声明过的能力；`agent plugins status` 区分 `unauthorized`（从没人决定过）与 `disabled`（决定过、关了），各自给出可操作的下一步 | ✅ **已交付** 分支 `feat/plugin-install-consent`（PR 待开，整支审查后决定编号） | 「装了」与「能跑」不再是一件事，第三方插件的安装与授权对运维可见可控 |
 | ~~**GUI 授权同意流**~~ | `GET /v1/plugins` 与 `POST /v1/plugins/{name}/grant\|deny` 三个端点（继承 loopback 加固与 Bearer 鉴权）；能力/hosts/paths 校验、allowlist 规则、并发编辑守卫全部走 `internal/plugin/consent`——CLI 与端点共用同一份，不是两条各自验证的路径；GUI 侧同意对话框渲染声明清单、勾掉不想要的 hosts/paths、提交后触发收敛，`pending_convergence` 如实区分「已生效」与「决定已落盘、收敛还没跑」 | ✅ **已交付** 分支 `feat/gui-plugin-consent`（PR 待开，整支审查后决定编号） | 第三方插件的授权决定不必再走命令行 |
-| **P4 插件面扩展 + 可观测** | 策略钩子（pre/post）、prompt 段、渲染投影；§8 全部事件与 `plugins status` | 独立 plan（未开始） | 插件可参与策略与提示词，排查闭环 |
+| ~~**P4 插件面扩展 + 可观测**~~ | 原来笼统的一期，2026-08-28 与 Cordis 比对后**拆成下面的 G1–G7 与 D1/D2** | 见下方各行 | — |
+| **G1 运行期健康度** | §6.9 的失败分类（timeout/trap/abi，denied 单独计）、连续故障计数、超阈值自动卸载、§8 缺的 `plugin/unload_leaked` | 计划已写：`plans/2026-08-28-plugin-runtime-health.md`（未开工） | 反复失败的插件会被自己的失败记录下来并卸载，泄漏的卸载不再无声 |
+| **G2 Guest SDK** | §6.10 承诺的 `pkg/legionplugin`（Go/wasip1）+ `sdk/rust` crate；`plugin_example` 迁移到 SDK | 独立 plan（未开始） | 写插件不再需要手搓 ABI 与 JSON |
+| **G3 插件配置 schema** | `plugin.json` 增加 `config_schema`，加载期校验 `plugins.json` 的 `config` | 独立 plan（未开始） | 坏配置在加载期点名字段，而不是运行时在 guest 里炸 |
+| **G4 扩展面（原 P4）** | 只读观察点 → 决策点（只能收紧，不能放宽）→ prompt 段；ABI 与 SDK 同步扩 | 独立 plan（未开始，**需先写 spec**） | 插件能做横切能力，而不只是贡献工具 |
+| **G5 状态实时推送** | 六个插件事件接到既有 SSE 桥，GUI 面板订阅后就地更新 | 独立 plan（未开始） | 运维不必手点刷新才看到收敛结果 |
+| **G6 缓存治理** | `plugins cache list\|remove\|prune`；验签失败的包立即移出缓存；容量上限 | 独立 plan（未开始） | 不可信的包不再永久躺在缓存里 |
+| **G7 密钥吊销** | keyring 增加吊销列表，装配期与 reload 期校验，被吊销钥匙签发的插件下次收敛卸载 | 独立 plan（未开始） | 泄漏的私钥签过的包不再继续通过验签 |
+| **D1 服务接缝**（待产品决策） | 插件提供可被别的插件消费的抽象能力（Cordis 的 Definition/Provider/Consumer） | 未决策 | 换 provider 换掉整条行为 |
+| **D2 scope 遮蔽**（待产品决策） | per-agent 同名工具替换与 restriction | 未决策 | per-agent 工具变体与人格化 |
+
+**P4 已拆分**：与 dsh Cordis 的逐项比对（2026-08-28）之后，原来笼统的「P4 插件面扩展 + 可观测」拆成了上表的 G1–G7 与两条待决策项，排序、边界、验收与「明确不做」写在 `legionAgent/docs/superpowers/plans/2026-08-28-plugin-gap-closure-roadmap.md`。比对结论一句话：**装载侧（隔离、准入、生命周期）已经比 Cordis 完整，差距全在扩展面的宽度与作者体验**。
 
 **A5b 仍未做**：OCI registry 传输——`source` 目前只认 `http(s)://` tarball，OCI 一条都没实现；镜像与代理配置、缓存清理与容量上限也不在内。`agent plugins install|grant|deny` 已在 A5c 交付；本仓没有 registry/索引概念，§10 也明确排除插件市场，所以 A5c **不做** `search`。
 
