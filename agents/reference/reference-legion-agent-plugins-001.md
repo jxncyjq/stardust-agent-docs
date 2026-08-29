@@ -570,6 +570,9 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 | `agent plugins deny <name>` | 撤销授权（保留 `grant` 键 → `disabled`） | `--config` |
 | `agent plugins keygen` | 生成 Ed25519 密钥对 | `--key-id`、`--private-key`（不覆盖已存在文件） |
 | `agent plugins sign <dir>` | 对包目录的 `plugin.json` 签名 | `--private-key` |
+| `agent plugins cache list` | 列出缓存里每个包：digest、大小、修改时间、是否完整、**是否仍被清单引用** | `--config` |
+| `agent plugins cache remove <digest>` | 删一条。仍被引用也删（运维点名了就删），但会打印是谁还指着它 | `--config` |
+| `agent plugins cache prune` | 删掉清单不再引用的条目，外加超过 1 小时的 `.unpack-*` 残留 | `--dry-run`、`--max-bytes`、`--config` |
 
 **七个子命令分两组，除了名词以外不共享任何东西**：
 
@@ -579,6 +582,18 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 `install --grant` 必须**恰好**列出插件声明的能力全集（部分授权写出的 entry 永远加载不了）；插件声明了非空 `allowed_hosts` / `allowed_paths` 时，`--grant` 直接拒绝 `http` / `fs`——主机与路径白名单是 `grant` 命令的活。
 
 `install` 从不重载运行中的服务，装完记得 `reload`。
+
+### 7.1.1 缓存治理
+
+`agent plugins cache` 的三条语义，写下来是因为它们都是**刻意的取舍**：
+
+- **`prune` 永不删仍被引用的条目**，`--max-bytes` 也不例外。拿部署指着的包去凑磁盘指标，是把「空间不够」变成「下次 reload 挂载失败」。降不到预算就如实报告差多少并非零退出，让运维自己决定是改 `plugins.json` 还是点名删。
+- **`--max-bytes` 让 prune 变成增量的**：不带预算时清掉所有未引用条目；带预算时只清到刚好达标为止，**最旧的先走**。今天没被引用的包，可能在有人回滚 `plugins.json` 的下一秒又被引用——热缓存值钱。
+- **「最旧」指最后一次写入，不是最近使用。** 这个部署不记录缓存读取（记录它意味着每次命中都要写盘），把它叫 LRU 是撒谎。
+- **`--dry-run` 先看再删**：一条会动磁盘的命令，应该能先告诉你它打算删什么。
+- **`.unpack-*` 残留只清超过 1 小时的**：正在下载的暂存目录和崩溃遗留的长得一模一样，年龄是唯一能区分它们的东西。
+
+另外，**验签失败的包会被自动移出缓存**，不需要运维动手：那份字节刚刚没通过信任校验，留在部署会读的目录里没有道理。仅限**信任失败**且**远程条目**——包损坏只会让下次重下一份同样的坏包，而本地条目的目录是运维自己的文件树。
 
 ### 7.2 HTTP 端点
 
@@ -689,7 +704,9 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | `parse plugin manifest …: config_schema …` | 插件自己的 `config_schema` 写得不对（用了不支持的关键字、`required` 里的名字没声明、嵌套超过 5 层），是**插件作者**要修的 |
 | `detail` 里出现 `health: N consecutive faults` | 插件连续失败到阈值被**自动卸载**；看 `category` 判断是 timeout/trap/abi，修好包后 `reload` |
 | 出现 `plugin/unload_leaked` 事件 | 卸载时仍有在途调用没收敛完；事件里的 `inflight` 是留下的调用数 |
-| 422 之后那条一直是 `load_failed` | 不可信的包留在缓存里了；仓内暂无 eviction API，需手工清 `cache/sha256/<digest>` |
+| 422 之后那条变回「未缓存」 | 正常：验签失败的包会被**立即移出缓存**（那份字节不可信，不该留在部署会读的目录里）。再点「取回声明」会重新下载并再次 422——修包或换签名密钥才是出路 |
+| 缓存越来越大 | `agent plugins cache list` 看占用与引用关系；`prune` 清掉清单不再引用的；`prune --max-bytes N` 把总量压到 N 以下（**只动未引用的**，压不下去会如实报告差多少） |
+| 缓存里有 `INCOMPLETE` 条目 | 上一次解包被打断留下的半份目录。它既不算命中也占磁盘，`prune` 不动它（它可能属于正在进行的下载），用 `cache remove <digest>` 点名清除 |
 
 <!-- @section: related -->
 ## 相关文档

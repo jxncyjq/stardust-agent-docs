@@ -7,7 +7,7 @@ category: "agents/reference"
 tags: ["agent", "cli", "commands", "backup", "data", "plugins"]
 version: "2.0.0"
 created: "2026-05-19"
-updated: "2026-08-28"
+updated: "2026-08-29"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -53,6 +53,9 @@ go build ./cmd/agent
 | `agent plugins deny <name>` | 撤销授权，保留注册 |
 | `agent plugins keygen --key-id <id> --private-key <path>` | 生成 Ed25519 签名密钥对 |
 | `agent plugins sign <package dir> --private-key <path>` | 给插件包的 `plugin.json` 签名 |
+| `agent plugins cache list` | 列出缓存的包：大小、修改时间、是否仍被清单引用 |
+| `agent plugins cache remove <digest>` | 删一条缓存的包 |
+| `agent plugins cache prune [--dry-run] [--max-bytes N]` | 清掉不再被引用的包与陈旧的解包残留 |
 | `agent backup --config agent.json --out agent.db.bak` | 备份 SQLite 数据库 |
 | `agent restore --config agent.json --in agent.db.bak` | 从备份恢复 |
 | `agent data retention --config agent.json ...` | 预览/执行数据保留清理 |

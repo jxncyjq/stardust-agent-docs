@@ -752,7 +752,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**G3 插件配置 schema**~~ | `plugin.json` 增加可选 `config_schema`（JSON Schema 子集，七个关键字），加载期校验 `plugins.json` 的 `config` 并点名字段 | ✅ **已交付** [#96](https://github.com/jxncyjq/stardust-agent-server/pull/96)；计划 `plans/2026-08-29-plugin-config-schema.md` | 坏配置在加载期点名字段，而不是运行时在 guest 里炸 |
 | **G4 扩展面（原 P4）** | 只读观察点 → 决策点（只能收紧，不能放宽）→ prompt 段；ABI 与 SDK 同步扩 | 独立 plan（未开始，**需先写 spec**） | 插件能做横切能力，而不只是贡献工具 |
 | ~~**G5 状态实时推送**~~ | 六个插件事件接到既有 SSE 桥，GUI 面板订阅后去抖重取。**勘察发现服务端本来就通了**（loader → eventbridge → `/v1/events` → GUI 桥），本期只做 GUI 侧：桥上给 `plugin/*` 开专用频道 + 面板订阅 | ✅ **已交付** GUI [#27](https://github.com/jxncyjq/stardust-agent-gui/pull/27)；计划 `legionAgentGUI/docs/plans/2026-08-29-plugin-live-status.md` | 运维不必手点刷新才看到收敛结果 |
-| **G6 缓存治理** | `plugins cache list\|remove\|prune`；验签失败的包立即移出缓存；容量上限 | 独立 plan（未开始） | 不可信的包不再永久躺在缓存里 |
+| ~~**G6 缓存治理**~~ | `plugins cache list\|remove\|prune`（`--dry-run` / `--max-bytes`，永不删仍被引用的条目）；验签失败的包立即移出缓存；`.unpack-*` 残留按年龄清理 | ✅ **已交付** [#97](https://github.com/jxncyjq/stardust-agent-server/pull/97)；计划 `plans/2026-08-29-plugin-cache-governance.md` | 不可信的包不再永久躺在缓存里 |
 | **G7 密钥吊销** | keyring 增加吊销列表，装配期与 reload 期校验，被吊销钥匙签发的插件下次收敛卸载 | 独立 plan（未开始） | 泄漏的私钥签过的包不再继续通过验签 |
 | **D1 服务接缝**（待产品决策） | 插件提供可被别的插件消费的抽象能力（Cordis 的 Definition/Provider/Consumer） | 未决策 | 换 provider 换掉整条行为 |
 | **D2 scope 遮蔽**（待产品决策） | per-agent 同名工具替换与 restriction | 未决策 | per-agent 工具变体与人格化 |
