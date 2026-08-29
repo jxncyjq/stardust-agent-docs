@@ -7,7 +7,7 @@ category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
 version: "1.2.0"
 created: "2026-08-28"
-updated: "2026-08-28"
+updated: "2026-08-29"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -615,6 +615,14 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 设置 → 插件：每行一条 entry，未解析的行给次要样式的「取回声明」，「授权」在声明可见之前一直禁用——**不能对看不见的清单点同意**。取回成功后常驻「已取回并缓存该插件包（未授权，可随时撤销）」，并把授权对话框切换到刚取回的声明。取回 / 授权 / 收敛进行中，Esc、标题栏 X、点背景、切 tab 四条路径全部被拦——一个按下去必然无效的取消按钮就是在骗人。
 
 GUI 与 CLI 走**同一批校验函数**（`internal/plugin/consent`），不是第二条各说各话的授权路径。
+
+**面板会自己刷新。** 六个插件事件（`plugin/loaded` / `unloaded` / `suspended` / `resumed` / `activation_failed` / `unload_leaked`）经 `/v1/events` 的 SSE 到达 GUI，面板订阅后**去抖 300ms 重新拉一次 `GET /v1/plugins`**：收敛完成、健康度自动卸载、依赖满足后恢复，都不必手点刷新。
+
+三件配套的事实：
+
+- **事件只是「有什么变了」的信号**，界面状态一律从 `GET /v1/plugins` 重取——事件的 `message` 是给人看的一行文本，照它打补丁就会把界面绑死在一个没人承诺的字符串格式上；
+- **仍然没有轮询**。没有事件就没有请求；断线由 SSE 桥自己重连，重连后面板打开时的那次全量拉取即是补齐；
+- 「刷新」按钮**没有取消**：它和自动刷新走同一条 `load()`，需要立刻确认时随时可以点。
 
 <!-- @section: runtime -->
 ## 八、运行时状态与收敛
