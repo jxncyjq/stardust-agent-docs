@@ -751,7 +751,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 | ~~**G2 Guest SDK**~~ | §6.10 承诺的 `pkg/legionplugin`（Go/wasip1）+ `sdk/rust/legion-plugin` crate；`plugin_example` 已迁到 SDK（五个文件降为一个） | ✅ **已交付** [#93](https://github.com/jxncyjq/stardust-agent-server/pull/93)；计划 `plans/2026-08-28-plugin-guest-sdk.md` | 写插件不再需要手搓 ABI 与 JSON |
 | ~~**G3 插件配置 schema**~~ | `plugin.json` 增加可选 `config_schema`（JSON Schema 子集，七个关键字），加载期校验 `plugins.json` 的 `config` 并点名字段 | ✅ **已交付** [#96](https://github.com/jxncyjq/stardust-agent-server/pull/96)；计划 `plans/2026-08-29-plugin-config-schema.md` | 坏配置在加载期点名字段，而不是运行时在 guest 里炸 |
 | **G4 扩展面（原 P4）** | 只读观察点 → 决策点（只能收紧，不能放宽）→ prompt 段；ABI 与 SDK 同步扩 | 独立 plan（未开始，**需先写 spec**） | 插件能做横切能力，而不只是贡献工具 |
-| **G5 状态实时推送** | 六个插件事件接到既有 SSE 桥，GUI 面板订阅后就地更新 | 独立 plan（未开始） | 运维不必手点刷新才看到收敛结果 |
+| ~~**G5 状态实时推送**~~ | 六个插件事件接到既有 SSE 桥，GUI 面板订阅后去抖重取。**勘察发现服务端本来就通了**（loader → eventbridge → `/v1/events` → GUI 桥），本期只做 GUI 侧：桥上给 `plugin/*` 开专用频道 + 面板订阅 | ✅ **已交付** GUI [#27](https://github.com/jxncyjq/stardust-agent-gui/pull/27)；计划 `legionAgentGUI/docs/plans/2026-08-29-plugin-live-status.md` | 运维不必手点刷新才看到收敛结果 |
 | **G6 缓存治理** | `plugins cache list\|remove\|prune`；验签失败的包立即移出缓存；容量上限 | 独立 plan（未开始） | 不可信的包不再永久躺在缓存里 |
 | **G7 密钥吊销** | keyring 增加吊销列表，装配期与 reload 期校验，被吊销钥匙签发的插件下次收敛卸载 | 独立 plan（未开始） | 泄漏的私钥签过的包不再继续通过验签 |
 | **D1 服务接缝**（待产品决策） | 插件提供可被别的插件消费的抽象能力（Cordis 的 Definition/Provider/Consumer） | 未决策 | 换 provider 换掉整条行为 |
@@ -761,7 +761,7 @@ owner ledger     : plugin:foo@1.2.0 → 4 项（wasm-instance, tool:foo_a, tool:
 
 **A5b 仍未做**：OCI registry 传输——`source` 目前只认 `http(s)://` tarball，OCI 一条都没实现；镜像与代理配置、缓存清理与容量上限也不在内。`agent plugins install|grant|deny` 已在 A5c 交付；本仓没有 registry/索引概念，§10 也明确排除插件市场，所以 A5c **不做** `search`。
 
-**GUI 授权同意流已交付，且明确不包含以下几件事**：GUI 里装插件（`install` 仍只有 CLI 一条路）；插件 `search` 与市场；OCI registry 传输；插件状态的实时推送（GUI 只在打开面板时取一次 `GET /v1/plugins`，此后靠手动点刷新，外加 grant/deny 响应自身带回的那一行就地更新；**没有轮询，也没有 WebSocket/SSE**）；密钥吊销与透明日志。以上都不在这期范围内，等它们真的做了再改这段。本期同样没有做过一次真机验证——证据全部来自单测、端到端测试与真 wasm 夹具；六期下来从没有第三方插件在真机上挂载过，这期也不改变这一点。
+**GUI 授权同意流已交付，且明确不包含以下几件事**：GUI 里装插件（`install` 仍只有 CLI 一条路）；插件 `search` 与市场；OCI registry 传输；~~插件状态的实时推送~~（**已在 G5 交付**：六个插件事件经 `/v1/events` SSE 到达 GUI，面板订阅后去抖 300ms 重取权威列表；仍然没有轮询）；密钥吊销与透明日志。以上都不在这期范围内，等它们真的做了再改这段。本期同样没有做过一次真机验证——证据全部来自单测、端到端测试与真 wasm 夹具；六期下来从没有第三方插件在真机上挂载过，这期也不改变这一点。
 
 **P0 的实施计划**：`legionAgent/docs/superpowers/plans/2026-08-16-plugin-lifecycle-kernel.md`（已执行完毕）。
 
