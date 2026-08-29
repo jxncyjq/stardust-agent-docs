@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.8.0"
+version: "1.9.0"
 created: "2026-08-28"
 updated: "2026-08-29"
 author: "jxncyjq"
@@ -567,7 +567,33 @@ func init() {
 
 排查：`agent plugins status` 与 `GET /v1/plugins` 的行里带该插件**提供**与**需要**的服务；提供者自己也挂着时，消费者的诊断显示为级联（点名那个提供者），而不是「没人提供它」。
 
-> **本期不做**：`call_tool` 还不能写 `service:<名>/<能力>` —— 消费者目前仍按工具名发起调用，服务只决定生命周期（谁在、谁挂起）。名字解析是下一期（D1b）。
+### 按服务名调用
+
+提供者把**能力名**映射到自己的工具：
+
+```jsonc
+"provides_services": ["issue-tracker"],
+"service_capabilities": {
+  "issue-tracker": { "search": "jira_search", "comment": "jira_comment" }
+}
+```
+
+消费者按能力名调用，永远不知道跑的是谁的工具：
+
+```jsonc
+call_tool { "tool": "service:issue-tracker/search", "arguments": { "q": "bug" } }
+```
+
+Rust SDK 里是 `host::invoke_service("issue-tracker", "search", r#"{"q":"bug"}"#)`。
+
+四条规则：
+
+- **能力名 ≠ 工具名**，这是刻意的：若必须一致，换提供者就得让两个插件商量好用同一个工具名——那正是这层间接要消除的耦合。
+- **映射必须是自己的工具**：把能力映射到别人的工具，是替别人做承诺（那个工具可能被撤回、改名或从没挂载），解析期直接拒绝。
+- **解析发生在计数之前**：共享的 per-task 预算、注册表派发、审计记录看到的都是解析出的**真实工具名**。服务名只是到达工具的一条路，不是会运行的东西。
+- **只有插件能按服务名调用**。模型的工具调用路径不认服务名——模型从不看见它们（见上一节）。
+
+失败没有回落，四种各说各的：格式不对；这个部署没接服务解析（不会把 `service:x/y` 当工具名去查，那只会回一句无关的 tool not found）；服务无人提供；提供者在但不暴露这个能力。**提供者被挂起时也不可解析**——它的工具已从注册表撤回。
 
 
 <!-- @section: manifest -->
@@ -594,6 +620,7 @@ func init() {
 | `tools[].description` / `input_schema` / `risk_level` / `sensitive` | — | 呈现给模型的元信息 |
 | `provides_services` | []string | **可选**。本插件能充当的**能力名**（见 §三点五）。一个名字一个提供者，先到先得；第二个声明者激活失败 |
 | `requires_services` | []string | **可选**。本插件需要谁来提供的能力名。无人提供 → 本插件**挂起**（不是卸载），提供者到场即恢复 |
+| `service_capabilities` | object | **可选**。`{服务名: {能力名: 本插件的工具名}}`。只占服务名不给映射是合法状态；给了就必须成立：服务是自己 provides 的、名字非空、**工具是自己贡献的** |
 | `requires` | []string | 本插件通过 `call_tool` 调用的**别的插件的工具名**；不得为空串、不得重复、不得写自己贡献的工具 |
 | `extensions` | []string | **可选**。本插件**实现**了哪些宿主扩展点，当前是 `observe` / `decide` / `prompt`（见 §3.4）。它是授权的上界：`grant.extensions` 只能取它的子集，而部署授权了、这里却没有（或 guest 实际没注册）会在**激活期**被拒 |
 | `config_schema` | object | **可选**。声明本插件期望的部署侧配置形状（JSON Schema 的一个子集，见 §4.1）。声明了就会在**加载期**校验 `plugins.json` 的 `config`，不合则该条 `failed` 且 `detail` 点名字段；不声明则配置原文直传给 guest，与既有行为一致 |
@@ -955,6 +982,8 @@ per-agent 注册表（policy / 权限 / 护栏 / 审计都是自己的）
 | `guest exports no linear memory` | 没导出 `memory`（构建目标不对，或不是 cdylib） |
 | 装完了跑不起来 | 正常：`install` 不授权，去 `grant` |
 | 某个插件一直 `suspended`，`waiting_on` 里是 `service:xxx` | 没有插件提供这个能力，或提供者自己也挂着（诊断会点名它）。装一个 `provides_services` 含该名字的插件，或先修好提供者 |
+| 插件调用报「this deployment has no service resolver」 | 这个部署没接服务解析（例如只跑 `agent plugins` 的只读命令时）。服务名只在 serve 起来的进程里可解析 |
+| 插件调用报「exposes no capability」 | 提供者占着服务名，但 `service_capabilities` 里没有这个能力。看提供者的 plugin.json |
 | 插件 `failed`，错误说服务已被别人提供 | 一个服务名只有一个提供者，先声明的保留。要换提供者：把占用者从 `plugins.json` 里去掉（或 `deny`），再让新的那个上 |
 | 模型看不到插件的工具 | 先确认这条 entry 是 `loaded`；再确认它没被该 agent 的 `disabled_tools` 禁掉。插件工具经**继承**到达每个任务的注册表（§八点五），所以 `loaded` 之后不需要重启 serve |
 | 插件工具被拒，错误是 permission denied | 两种：①该工具声明了 `risk_level: high/critical`，执行策略拒了它（与内置工具同一条规则）；②它被 `disabled_tools` 禁了 |
