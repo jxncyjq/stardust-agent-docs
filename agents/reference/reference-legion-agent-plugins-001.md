@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.5.0"
+version: "1.6.0"
 created: "2026-08-28"
 updated: "2026-08-29"
 author: "jxncyjq"
@@ -351,6 +351,7 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 | 1 | `abi.OpCallTool` | `{"call_id":…,"tool":…,"arguments":{…}}` | `domain.ToolResult`：`{"call_id":…,"success":bool,"output":…}` 或 `{"success":false,"error":…}` |
 | 2 | `abi.OpObserveToolResult` | `{"call_id":…,"tool":…,"arguments":{…},"success":bool,"output":…,"error":…}` | **被丢弃**。返回一个格式正确的小文档即可（SDK 返回 `{}`）。见 §3.4 |
 | 3 | `abi.OpDecideToolCall` | `{"call_id":…,"tool":…,"arguments":{…}}`（还没跑，所以没有结果） | `{"decision":"allow"\|"deny"\|"ask","reason":…}`。**答不出来 = 拒绝**，见 §3.4 |
+| 4 | `abi.OpPromptSegment` | 空 | `{"text":…}`。**激活时问一次**，答案在插件挂着期间一直用，见 §3.4 |
 | 其它 | — | — | **不要 trap**，返回一个可读的小 JSON 错误体 |
 
 **交叉校验**：激活时宿主拿 op 0 的自述与部署侧的说法对两次——`provides` 少一个部署声称的工具就拒绝挂载；`extensions` 少一个部署**授权**了的扩展点也拒绝挂载（见 §3.4）。工具失败要用 `{"success":false,"error":…}` 表达，不要 trap——trap 会让整个模块死掉。
@@ -393,6 +394,7 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 |---|---|---|
 | `observe` | 一次工具调用**答完之后** | 什么也改不了 |
 | `decide` | 一次工具调用**派发之前** | 只能**收紧**：否决，或要求人工审批 |
+| `prompt` | **激活时一次** | 往系统提示词里加一段文字（每次推理都在） |
 
 `observe` 的边界，逐条都是刻意的：
 
@@ -460,6 +462,51 @@ legionplugin.Decide(func(req legionplugin.ToolDecisionRequest) legionplugin.Tool
 })
 ```
 
+
+#### `prompt`：往系统提示词里加一段文字
+
+被授予这个扩展点的插件，可以贡献一段文字，进入**每一次**推理的系统提示词。
+
+- **只问一次。** 宿主在激活时问 op 4，答案在插件挂着期间一直用。不是每次构建提示词都问：那会在每个任务的关键路径上多一次 wasm 调用，而且答案可能每次不同——那样这段文字就不能待在稳定前缀里。插件的段落是**部署级**事实，重新挂载才会变。
+- **进稳定前缀。** 代价是**挂载/卸载各让前缀缓存失效一次**（低频操作）。不这样做的代价更大：每个任务重发一遍，长期 token 成本更高。**运维请注意**：`plugins reload` 之后第一次推理的 prompt 缓存未命中是**预期行为**，不是 bug。
+- **带围栏。** 渲染成这样：
+
+```
+--- plugin "legion-jira" (untrusted, provided by a deployment-installed plugin) ---
+<插件的文字>
+--- end plugin "legion-jira" ---
+```
+
+  这是**不可信文本进系统提示词**。模型必须能分辨哪句话来自宿主、哪句来自一个被装上的插件；没有围栏，一个插件写「忽略先前的指令」就和宿主的指令等价。
+
+- **有上限**：单插件 2048 rune、全部合计 8192 rune。超长**截断并留痕**（文本里有标记、日志有 Warn），超总量的那些段落被**拒绝**并在日志里点名。按 rune 不按字节：这保护的是模型上下文，按字节会让中文部署只拿到三分之一。
+- **顺序按插件名**，不是挂载顺序：同一份部署每次起来必须逐字节一致，否则前缀缓存白做。
+- **答不出来 = 拒绝激活。** 一个被授予 `prompt` 却给不出段落的插件，会让部署以为装上了、而模型从没看见那些指令。空 `text` 则是**合法**回答（这个部署里没话说），不渲染任何围栏。
+- 提示词里它是独立的命名块 `plugin_prompt`：提示词涨了 2 KB 时要能回答「哪个插件干的」。
+
+Rust：
+
+```rust
+declare_plugin!(
+    name = "legion-jira",
+    version = "0.1.0",
+    tools = [("jira_search", jira_search)],
+    prompt = prompt_segment
+);
+
+fn prompt_segment() -> String {
+    String::from("When citing a Jira issue, link it as https://jira.example.com/browse/KEY.")
+}
+```
+
+Go：
+
+```go
+legionplugin.Prompt(func() string {
+	return "When citing a Jira issue, link it as https://jira.example.com/browse/KEY."
+})
+```
+
 **三处联动**（少一处就不通，且各自的失败点不同）：
 
 | 位置 | 缺了会怎样 |
@@ -520,7 +567,7 @@ func init() {
 | `tools[].timeout_ms` | int | 必须 > 0 |
 | `tools[].description` / `input_schema` / `risk_level` / `sensitive` | — | 呈现给模型的元信息 |
 | `requires` | []string | 本插件通过 `call_tool` 调用的**别的插件的工具名**；不得为空串、不得重复、不得写自己贡献的工具 |
-| `extensions` | []string | **可选**。本插件**实现**了哪些宿主扩展点，当前是 `observe` / `decide`（见 §3.4）。它是授权的上界：`grant.extensions` 只能取它的子集，而部署授权了、这里却没有（或 guest 实际没注册）会在**激活期**被拒 |
+| `extensions` | []string | **可选**。本插件**实现**了哪些宿主扩展点，当前是 `observe` / `decide` / `prompt`（见 §3.4）。它是授权的上界：`grant.extensions` 只能取它的子集，而部署授权了、这里却没有（或 guest 实际没注册）会在**激活期**被拒 |
 | `config_schema` | object | **可选**。声明本插件期望的部署侧配置形状（JSON Schema 的一个子集，见 §4.1）。声明了就会在**加载期**校验 `plugins.json` 的 `config`，不合则该条 `failed` 且 `detail` 点名字段；不声明则配置原文直传给 guest，与既有行为一致 |
 
 `requires` 与 `capabilities` 不同类：能力在加载期检查，缺了直接拒载；`requires` 未满足（提供方不在）是**可恢复的 suspended 态**，提供方回来即可恢复。
@@ -848,6 +895,9 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | `cross-check manifest: the deployment grants … extension` | 授权了扩展点，但 guest 的 op 0 自述里没有它——插件没注册观察者（或用的是不带 `observe` 的旧构建）。要么重新构建，要么把它从这条 entry 的 `grant.extensions` 里去掉 |
 | `grant --extensions` 被拒，说插件没声明 | `plugin.json` 的 `extensions` 里没有它。授一个插件没要过的扩展点是配置写错了，不是慷慨 |
 | 任务停在「等待审批」，票上写着某个插件 | 那个插件答了 `ask`。在 GUI 的审批卡片（或 `GET /v1/approvals`）里能看到 `requested_by` 与 `reason`；批准后任务从检查点继续。**Auto 模式也会这样停**——那是 `ask` 的语义，不是 bug |
+| `plugins reload` 之后第一次推理慢/贵 | **预期**：插件的提示词段在稳定前缀里，挂载或卸载会让前缀缓存失效一次。之后的任务照常命中 |
+| 插件挂不上，`detail` 提到 prompt segment | 它被授予了 `prompt` 却答不出段落（trap/空体/坏 JSON）。被授予却给不出文字的插件不会被挂上——否则部署以为装了指令，而模型从没看见 |
+| 提示词莫名变长 | 看 `plugin_prompt` 这个命名块：它是插件贡献的全部文字。单插件超 2048 rune 会被截断（文本里有标记、日志有 Warn），合计超 8192 rune 的段落会被拒绝并在日志里点名 |
 | 人已经批了，调用还是被拒 | 派发时那次兜底没找到批准的票。两种常见原因：①这次调用没有任务上下文（插件自己的 `call_tool`、CLI 直接跑），那里本来就没人看着；②lazy 协议下票开在了外层 meta 调用上——票必须按**内层**调用开，这是宿主内部的一致性，遇到请报 bug |
 | 工具调用批量被拒，错误里点着某个插件 | 那个插件的决策点在拒。看它是**主动拒**（reason 是插件自己的话）还是**答不出来**（reason 里有 timeout/trap/decode，且有 `plugin/call_failed{operation=decide:*}`）。后者是 fail-closed 生效：坏插件会在连续故障到阈值后被自动卸载，也可以直接 `agent plugins deny <name>` 立刻停掉 |
 | 授权了 `decide` 但插件没实现 | 与 observe 同：激活期拒绝，`detail` 点名扩展点 |
