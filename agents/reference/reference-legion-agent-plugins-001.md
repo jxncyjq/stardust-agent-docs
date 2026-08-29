@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-08-28"
 updated: "2026-08-28"
 author: "jxncyjq"
@@ -256,9 +256,80 @@ curl -s http://127.0.0.1:18110/v1/plugins
 已经在跑的 serve，改完清单后用 `agent plugins reload`（同样只在该进程内）收敛；`install` / `grant` / `deny` 都只动磁盘，不碰运行中的服务。
 
 <!-- @section: authoring -->
-## 三、编写插件：ABI 合同
+## 三、编写插件
 
 宿主是 [wazero](https://wazero.io)，目标 `wasm32-wasip1`，guest 是 **WASI reactor**（导出 `_initialize`，没有 `_start`）。
+
+### 3.0 先用 SDK
+
+**手写 ABI 只在你要写第三种语言时才需要。** 两个官方 SDK 各自承担四个导出、op 分发、内存管理、指针打包、JSON，以及 op 0 的自述（`provides` 从注册的工具推导，所以自述与分发表不可能对不上——那个对不上会让激活期的交叉校验拒绝挂载）。
+
+| | Rust `sdk/rust/legion-plugin` | Go `pkg/legionplugin` |
+|---|---|---|
+| 产物体积 | ~49 KB | ~3.3 MB |
+| 内存下限 | 4 MiB（64 页） | 32 MiB（512 页） |
+| 工具链 | `rustup target add wasm32-wasip1` | 只要 Go 1.24+ |
+| 能力开关 | Cargo feature | build tag |
+
+体积或内存敏感、或一个部署要挂很多插件，用 Rust；团队只有 Go 就用 Go——3.3 MB 是标准 Go 运行时的代价，不是 SDK 的。
+
+**Rust**：
+
+```rust
+use legion_plugin::{declare_plugin, log_info, ToolCall, ToolResult};
+
+declare_plugin!(
+    name = "legion-hello",
+    version = "0.1.0",
+    tools = [("hello_echo", hello_echo)]
+);
+
+fn hello_echo(call: &ToolCall) -> ToolResult {
+    match call.argument("name") {
+        Some(name) => {
+            log_info(&format!("hello_echo called with name={name}"));
+            ToolResult::ok(format!("hello, {name}!"))
+        }
+        None => ToolResult::fail("missing required argument: name"),
+    }
+}
+```
+
+构建：`cargo build --release --target wasm32-wasip1`。
+
+**Go**：
+
+```go
+package main
+
+import "github.com/stardust/legion-agent/pkg/legionplugin"
+
+// init 而不是 main：插件是 WASI reactor，宿主实例化后直接调导出，
+// main 永远不会被调用。
+func init() {
+	legionplugin.Serve("legion-hello-go", "0.1.0", legionplugin.Tool{
+		Name: "hello_echo",
+		Handler: func(call legionplugin.ToolCall) legionplugin.ToolResult {
+			name := call.Argument("name")
+			if name == "" {
+				return legionplugin.Fail("missing required argument: name")
+			}
+			legionplugin.LogInfo("hello_echo called with name=" + name)
+			return legionplugin.OK("hello, " + name + "!")
+		},
+	})
+}
+
+func main() {}
+```
+
+构建：`GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o plugin.wasm .`。
+
+两侧的能力开关（Rust 的 feature / Go 的 build tag）必须与 `plugin.json` 的 `capabilities` 以及部署侧 `grant --capabilities` **三处一致**——理由见 §1 的第三条不变量。
+
+Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只有一个整数地址，Go 的 GC 看不见它，所以 SDK 自己按住每个缓冲区到 `plugin_free`。这是 SDK 内部的事，作者不需要管，但**自己手写 Go guest 的人必须自己做**，否则宿主会写进已被回收的内存。
+
+下面 §3.1–§3.3 是**底层合同**：用 SDK 时不需要读，写第三种语言的 SDK 时才需要。
 
 ### 3.1 guest 必须导出的五样
 
