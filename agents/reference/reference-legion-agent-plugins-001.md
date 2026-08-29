@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.2.0"
+version: "1.3.0"
 created: "2026-08-28"
 updated: "2026-08-29"
 author: "jxncyjq"
@@ -347,11 +347,12 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 
 | op | 常量 | 入参 | 返回 |
 |---|---|---|---|
-| 0 | `abi.OpManifest` | 忽略 | 自述 JSON：`{"name":…,"version":…,"provides":[工具名…]}` |
+| 0 | `abi.OpManifest` | 忽略 | 自述 JSON：`{"name":…,"version":…,"provides":[工具名…],"extensions":[扩展点名…]}` |
 | 1 | `abi.OpCallTool` | `{"call_id":…,"tool":…,"arguments":{…}}` | `domain.ToolResult`：`{"call_id":…,"success":bool,"output":…}` 或 `{"success":false,"error":…}` |
+| 2 | `abi.OpObserveToolResult` | `{"call_id":…,"tool":…,"arguments":{…},"success":bool,"output":…,"error":…}` | **被丢弃**。返回一个格式正确的小文档即可（SDK 返回 `{}`）。见 §3.4 |
 | 其它 | — | — | **不要 trap**，返回一个可读的小 JSON 错误体 |
 
-**交叉校验**：激活时宿主拿 op 0 的 `provides` 与部署侧声称该插件提供的工具集比对，`provides` 少一个就拒绝挂载。工具失败要用 `{"success":false,"error":…}` 表达，不要 trap——trap 会让整个模块死掉。
+**交叉校验**：激活时宿主拿 op 0 的自述与部署侧的说法对两次——`provides` 少一个部署声称的工具就拒绝挂载；`extensions` 少一个部署**授权**了的扩展点也拒绝挂载（见 §3.4）。工具失败要用 `{"success":false,"error":…}` 表达，不要 trap——trap 会让整个模块死掉。
 
 ### 3.3 host 函数（模块名 `legion`）
 
@@ -381,6 +382,61 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 - HTTP 重定向**每一跳都重新校验** `allowed_hosts`，跳出白名单同样 `DENIED`。
 - `call_tool` 单链深度上限 **3**；它还与模型共用同一份 per-task 工具预算，插件调工具会消耗任务额度。
 
+### 3.4 扩展点（extensions）
+
+**能力**是插件调宿主的方向，**扩展点**是宿主调插件的方向。两者的执行方式一样：未授权 = **不存在的接线**，不是运行期的一个 `if`。未授权的能力表现为 host 模块里没有那个函数（实例化就失败），未授权的扩展点表现为宿主**根本没注册**这个观察者，op 2 一次也不会到达 guest。
+
+当前只有一个扩展点：
+
+| 扩展点 | 时机 | 能改什么 |
+|---|---|---|
+| `observe` | 一次工具调用**答完之后** | 什么也改不了 |
+
+`observe` 的边界，逐条都是刻意的：
+
+- **它是只读的、单向的。** 观察者没有返回值，宿主读完 op 2 的应答就丢掉。调用方拿到的结果在任何观察者跑之前就已经定了。
+- **它看不到没跑起来的调用。** 被权限 / 策略 / 护栏拒掉的调用**从未发生**，通知观察者等于报告一次不存在的执行；handler 返回 Go error 也不通知——那是宿主或工具自身的故障，审计里已经有 `tool_failed`。返回 `success:false` 的调用**会**通知：工具跑了，答了「不行」。
+- **它看到的是 agent 跑的任意工具**，不只是本插件自己的——这正是这个 seam 的用途。
+- **每次通知 200ms 上限**，跑在调用方的 goroutine 上。超时 / trap 按故障计入本插件的健康度（与工具调用失败同一个计数器，连续失败足够多次会被卸载），并发出 `plugin/call_failed`（`operation` 形如 `observe:<tool>`）。贵的活儿留到自己的下一次工具调用里做。
+- **授权是子集语义**：插件声明了 `observe`，部署可以**一个都不授**——那是一个完整的答案（插件照常贡献工具，只是不被咨询），与能力必须**全等**授权不同。
+
+**三处联动**（少一处就不通，且各自的失败点不同）：
+
+| 位置 | 缺了会怎样 |
+|---|---|
+| guest 里注册观察者（SDK 一行） | 部署授权了却没实现 → **激活期拒绝**，`detail` 点名这个扩展点 |
+| `plugin.json` 的 `extensions` | `grant --extensions` 直接拒绝：没声明的东西授不了 |
+| `agent plugins grant --extensions observe` | 宿主不注册观察者，op 2 永不到达（**静默且正确**：这就是未授权的含义） |
+
+SDK 里各是一行。Rust：
+
+```rust
+declare_plugin!(
+    name = "legion-hello",
+    version = "0.1.0",
+    tools = [("hello_echo", hello_echo)],
+    observe = log_observation
+);
+
+fn log_observation(o: &ToolObservation) {
+    log_info(&format!("observed tool={} success={}", o.tool, o.success));
+}
+```
+
+Go：
+
+```go
+func init() {
+	legionplugin.Serve("legion-audit", "0.1.0", legionplugin.Tool{ /* … */ })
+	legionplugin.Observe(func(o legionplugin.ToolObservation) {
+		legionplugin.LogInfo("saw " + o.Tool)
+	})
+}
+```
+
+两个 SDK 的 op 0 自述里，`extensions` 都是**从注册推导**的，与 `provides` 同源：作者不需要维护第二份清单，也就不可能让它和实际接线对不上。
+
+
 <!-- @section: manifest -->
 ## 四、`plugin.json` 清单规范
 
@@ -404,6 +460,7 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 | `tools[].timeout_ms` | int | 必须 > 0 |
 | `tools[].description` / `input_schema` / `risk_level` / `sensitive` | — | 呈现给模型的元信息 |
 | `requires` | []string | 本插件通过 `call_tool` 调用的**别的插件的工具名**；不得为空串、不得重复、不得写自己贡献的工具 |
+| `extensions` | []string | **可选**。本插件**实现**了哪些宿主扩展点，当前只有 `observe`（见 §3.4）。它是授权的上界：`grant.extensions` 只能取它的子集，而部署授权了、这里却没有（或 guest 实际没注册）会在**激活期**被拒 |
 | `config_schema` | object | **可选**。声明本插件期望的部署侧配置形状（JSON Schema 的一个子集，见 §4.1）。声明了就会在**加载期**校验 `plugins.json` 的 `config`，不合则该条 `failed` 且 `detail` 点名字段；不声明则配置原文直传给 guest，与既有行为一致 |
 
 `requires` 与 `capabilities` 不同类：能力在加载期检查，缺了直接拒载；`requires` 未满足（提供方不在）是**可恢复的 suspended 态**，提供方回来即可恢复。
@@ -563,7 +620,8 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
       "grant": {
         "capabilities": ["log", "http"],
         "allowed_hosts": ["api.example.com"],
-        "allowed_paths": []
+        "allowed_paths": [],
+        "extensions": ["observe"]
       },
       "tools": [ { "name": "hello_echo", "risk_level": "low", "sensitive": false } ],
       "config": { "任意": "交给 config_get 的原文" }
@@ -573,6 +631,8 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 ```
 
 `tools[]` 是部署侧的**接受**清单：`name` 必须是插件声明过的工具；`risk_level` / `sensitive` 只能把插件自己的声明**收紧**，不能放松（`sensitive` 是指针，缺省 = 用插件的声明）。
+
+`grant.extensions` 与 `grant.capabilities` 的规则**不同**，别把它们统一了：能力必须与插件声明**全等**（部分授权写出的 entry 永远加载不了），扩展点可以是**子集**，缺省 = 一个都不授（见 §3.4）。
 
 **三态磁盘编码**（判据是 `grant` 这个**键在不在**，不是 capabilities 空不空——纯计算插件本来就零能力）：
 
@@ -592,7 +652,7 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 | `agent plugins status` | 逐条报告清单里每个插件到底成了什么 | `--config`；**本进程视图**，见下 |
 | `agent plugins reload` | 重读清单并收敛运行中的插件 | `--config`；**本进程视图**，见下 |
 | `agent plugins install <url>` | 取回 + 校验 + 解包 + 登记 | `--digest`（必填）、`--grant`（可选，直接授权）、`--config` |
-| `agent plugins grant <name>` | 授权一条已登记的 entry | `--capabilities`（必须**恰好**等于插件声明的集合）、`--allowed-hosts` / `--allowed-paths`（可取声明集合的子集）、`--config` |
+| `agent plugins grant <name>` | 授权一条已登记的 entry | `--capabilities`（必须**恰好**等于插件声明的集合）、`--allowed-hosts` / `--allowed-paths`（可取声明集合的子集）、`--extensions`（可取声明集合的子集，缺省一个都不授，见 §3.4）、`--config` |
 | `agent plugins deny <name>` | 撤销授权（保留 `grant` 键 → `disabled`） | `--config` |
 | `agent plugins keygen` | 生成 Ed25519 密钥对 | `--key-id`、`--private-key`（不覆盖已存在文件） |
 | `agent plugins sign <dir>` | 对包目录的 `plugin.json` 签名 | `--private-key` |
@@ -604,6 +664,8 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 
 - `status` / `reload` 是**这个进程**的视图——两者都读 serve 装配的那个 loader。**跨进程没有视图**：在一个只跑 CLI 的进程里执行，会明确报告「本进程没有 loader」，而不是回一个像「没有插件」的空答案。
 - `keygen` / `sign` / `install` / `grant` / `deny` 不碰任何 loader、不启动服务。`keygen` 与 `sign` 连配置都不读——它们**生产**验签所消费的东西，与验签一起发布是刻意的：一个能验签却造不出签名的部署，剩下的唯一选择就是把验签关掉，而那正是验签要防的事。`install` / `grant` / `deny` 读插件配置（复用与 serve 相同的缓存、下载上限、来源策略与信任集）并写清单，但它们做的都是**磁盘上的登记或决定，不是启动**：任何一个都要等 `reload` 才会到达运行中的进程。
+
+`install --grant` 只管能力，**不授任何扩展点**：装的时候把工具接进来、把观察权留到后面单独决定是刻意的默认。要授就装完再跑一次 `agent plugins grant <name> --capabilities … --extensions observe`。
 
 `install --grant` 必须**恰好**列出插件声明的能力全集（部分授权写出的 entry 永远加载不了）；插件声明了非空 `allowed_hosts` / `allowed_paths` 时，`--grant` 直接拒绝 `http` / `fs`——主机与路径白名单是 `grant` 命令的活。
 
@@ -641,7 +703,9 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 
 `resolve` 拿到不可信包时返回 **HTTP 422**，界面据此**不给重试**（重试一万次签名还是不对）。
 
-`GET /v1/plugins` 的一行（`PluginView`）字段：`name` `version` `state` `detail?` `tools[]` `declared_capabilities/hosts/paths` `declared_unresolved` `declared_unresolved_reason?` `declared_error?` `granted_capabilities/hosts/paths`。
+`POST /v1/plugins/{name}/grant` 的请求体：`capabilities` `allowed_hosts` `allowed_paths` `extensions`——四个字段与 CLI 的四个参数一一对应，走**同一批**校验函数（`internal/plugin/consent`），包括「能力全等、扩展点子集」这条区别。
+
+`GET /v1/plugins` 的一行（`PluginView`）字段：`name` `version` `state` `detail?` `tools[]` `declared_capabilities/hosts/paths` `declared_extensions` `declared_unresolved` `declared_unresolved_reason?` `declared_error?` `granted_capabilities/hosts/paths` `granted_extensions`。声明与已授分开报告的理由在扩展点上同样成立：同意对话框拿**声明**画勾选项，拿**已授**画当前状态。
 
 `declared_unresolved_reason` 的三个取值决定界面给不给「取回声明」：
 
@@ -719,6 +783,9 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | `tools is empty` | 插件不贡献工具就没有加载的理由 |
 | 实例化失败，提示缺 import | guest import 了未被授权能力对应的 host 函数 |
 | `cross-check manifest: … missing` | op 0 的 `provides` 没覆盖部署声称的工具 |
+| `cross-check manifest: the deployment grants … extension` | 授权了扩展点，但 guest 的 op 0 自述里没有它——插件没注册观察者（或用的是不带 `observe` 的旧构建）。要么重新构建，要么把它从这条 entry 的 `grant.extensions` 里去掉 |
+| `grant --extensions` 被拒，说插件没声明 | `plugin.json` 的 `extensions` 里没有它。授一个插件没要过的扩展点是配置写错了，不是慷慨 |
+| 授权了 `observe`，观察者却从没被调用 | 先确认这一条真的 `loaded`；再确认这次调用**跑起来了**——被权限/策略/护栏拒掉的调用从不通知观察者（§3.4）。另外插件自身的 `plugin/call_failed`（`operation` 是 `observe:<tool>`）说明它被调过但失败了 |
 | `guest exports no linear memory` | 没导出 `memory`（构建目标不对，或不是 cdylib） |
 | 装完了跑不起来 | 正常：`install` 不授权，去 `grant` |
 | `grant` 报缓存未命中且没配 cache | `plugins.cache` 缺失，远程包无处落盘 |
