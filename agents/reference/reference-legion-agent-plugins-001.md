@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.3.0"
+version: "1.4.0"
 created: "2026-08-28"
 updated: "2026-08-29"
 author: "jxncyjq"
@@ -350,6 +350,7 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 | 0 | `abi.OpManifest` | 忽略 | 自述 JSON：`{"name":…,"version":…,"provides":[工具名…],"extensions":[扩展点名…]}` |
 | 1 | `abi.OpCallTool` | `{"call_id":…,"tool":…,"arguments":{…}}` | `domain.ToolResult`：`{"call_id":…,"success":bool,"output":…}` 或 `{"success":false,"error":…}` |
 | 2 | `abi.OpObserveToolResult` | `{"call_id":…,"tool":…,"arguments":{…},"success":bool,"output":…,"error":…}` | **被丢弃**。返回一个格式正确的小文档即可（SDK 返回 `{}`）。见 §3.4 |
+| 3 | `abi.OpDecideToolCall` | `{"call_id":…,"tool":…,"arguments":{…}}`（还没跑，所以没有结果） | `{"decision":"allow"\|"deny","reason":…}`。**答不出来 = 拒绝**，见 §3.4 |
 | 其它 | — | — | **不要 trap**，返回一个可读的小 JSON 错误体 |
 
 **交叉校验**：激活时宿主拿 op 0 的自述与部署侧的说法对两次——`provides` 少一个部署声称的工具就拒绝挂载；`extensions` 少一个部署**授权**了的扩展点也拒绝挂载（见 §3.4）。工具失败要用 `{"success":false,"error":…}` 表达，不要 trap——trap 会让整个模块死掉。
@@ -386,11 +387,12 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 
 **能力**是插件调宿主的方向，**扩展点**是宿主调插件的方向。两者的执行方式一样：未授权 = **不存在的接线**，不是运行期的一个 `if`。未授权的能力表现为 host 模块里没有那个函数（实例化就失败），未授权的扩展点表现为宿主**根本没注册**这个观察者，op 2 一次也不会到达 guest。
 
-当前只有一个扩展点：
+两个扩展点：
 
 | 扩展点 | 时机 | 能改什么 |
 |---|---|---|
 | `observe` | 一次工具调用**答完之后** | 什么也改不了 |
+| `decide` | 一次工具调用**派发之前** | 只能**否决**（收紧），永远不能放宽 |
 
 `observe` 的边界，逐条都是刻意的：
 
@@ -399,6 +401,47 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 - **它看到的是 agent 跑的任意工具**，不只是本插件自己的——这正是这个 seam 的用途。
 - **每次通知 200ms 上限**，跑在调用方的 goroutine 上。超时 / trap 按故障计入本插件的健康度（与工具调用失败同一个计数器，连续失败足够多次会被卸载），并发出 `plugin/call_failed`（`operation` 形如 `observe:<tool>`）。贵的活儿留到自己的下一次工具调用里做。
 - **授权是子集语义**：插件声明了 `observe`，部署可以**一个都不授**——那是一个完整的答案（插件照常贡献工具，只是不被咨询），与能力必须**全等**授权不同。
+
+
+#### `decide`：只能收紧的决策点
+
+宿主在派发任何工具之前问一遍已授权的插件，回答 `allow` 或 `deny`。
+
+- **只能收紧。** 征询发生在宿主自己的 enforcer 与 policy **之后**：宿主已经拒掉的调用根本不会给插件看，所以没有任何位置能把拒绝改成放行。插件回 `allow` 只是「我不反对」，不是授权。
+- **取最严，与顺序无关。** 多个插件里任何一个 deny 即拒。命中拒绝就短路——省下的是调用方的预算——代价是错误里只点名第一个反对者。
+- **fail-closed：答不出来就是拒绝。** 超时、trap、空体、坏 JSON、未知字段、尾随数据、这个 ABI 不认识的 decision 词，全部拒绝该次调用并计入插件健康度。反过来（fail-open）会让「安全控制」变成「把插件搞崩就能关掉的安全控制」。
+- **停摆是有界的。** 一个坏插件确实能拒掉若干次调用，但连续故障到阈值后 G1 会**自动卸载**它，之后没有人再拒绝任何东西。运维遇到批量拒绝时该看的是 `plugin/call_failed`（`operation` 形如 `decide:<tool>`）与该插件的健康度，而不是等。
+- **预算 = `min(工具超时/4, 200ms)`。** 征询跑在调用方的 goroutine 上，工具还没开始：声明 300ms 超时的工具不该把其中 200ms 花在被问「能不能跑」上。
+- 拒绝会以 `ErrPermissionDenied` 的形式返回，错误文本点名**是哪个插件**、**理由是什么**——一个无法归因的拒绝是运维修不了的拒绝。
+
+Rust：
+
+```rust
+declare_plugin!(
+    name = "legion-gatekeeper",
+    version = "0.1.0",
+    tools = [("status", status)],
+    decide = decide_call
+);
+
+fn decide_call(request: &ToolDecisionRequest) -> ToolDecision {
+    if request.tool == "write_file" && frozen() {
+        return ToolDecision::deny("writes are frozen during the incident");
+    }
+    ToolDecision::allow()
+}
+```
+
+Go：
+
+```go
+legionplugin.Decide(func(req legionplugin.ToolDecisionRequest) legionplugin.ToolDecision {
+	if req.Tool == "write_file" && frozen() {
+		return legionplugin.Deny("writes are frozen during the incident")
+	}
+	return legionplugin.Allow()
+})
+```
 
 **三处联动**（少一处就不通，且各自的失败点不同）：
 
@@ -460,7 +503,7 @@ func init() {
 | `tools[].timeout_ms` | int | 必须 > 0 |
 | `tools[].description` / `input_schema` / `risk_level` / `sensitive` | — | 呈现给模型的元信息 |
 | `requires` | []string | 本插件通过 `call_tool` 调用的**别的插件的工具名**；不得为空串、不得重复、不得写自己贡献的工具 |
-| `extensions` | []string | **可选**。本插件**实现**了哪些宿主扩展点，当前只有 `observe`（见 §3.4）。它是授权的上界：`grant.extensions` 只能取它的子集，而部署授权了、这里却没有（或 guest 实际没注册）会在**激活期**被拒 |
+| `extensions` | []string | **可选**。本插件**实现**了哪些宿主扩展点，当前是 `observe` / `decide`（见 §3.4）。它是授权的上界：`grant.extensions` 只能取它的子集，而部署授权了、这里却没有（或 guest 实际没注册）会在**激活期**被拒 |
 | `config_schema` | object | **可选**。声明本插件期望的部署侧配置形状（JSON Schema 的一个子集，见 §4.1）。声明了就会在**加载期**校验 `plugins.json` 的 `config`，不合则该条 `failed` 且 `detail` 点名字段；不声明则配置原文直传给 guest，与既有行为一致 |
 
 `requires` 与 `capabilities` 不同类：能力在加载期检查，缺了直接拒载；`requires` 未满足（提供方不在）是**可恢复的 suspended 态**，提供方回来即可恢复。
@@ -652,7 +695,7 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 | `agent plugins status` | 逐条报告清单里每个插件到底成了什么 | `--config`；**本进程视图**，见下 |
 | `agent plugins reload` | 重读清单并收敛运行中的插件 | `--config`；**本进程视图**，见下 |
 | `agent plugins install <url>` | 取回 + 校验 + 解包 + 登记 | `--digest`（必填）、`--grant`（可选，直接授权）、`--config` |
-| `agent plugins grant <name>` | 授权一条已登记的 entry | `--capabilities`（必须**恰好**等于插件声明的集合）、`--allowed-hosts` / `--allowed-paths`（可取声明集合的子集）、`--extensions`（可取声明集合的子集，缺省一个都不授，见 §3.4）、`--config` |
+| `agent plugins grant <name>` | 授权一条已登记的 entry | `--capabilities`（必须**恰好**等于插件声明的集合）、`--allowed-hosts` / `--allowed-paths`（可取声明集合的子集）、`--extensions`（可取声明集合的子集，缺省一个都不授；`decide` 授出去的是**否决工具调用**的权力，见 §3.4）、`--config` |
 | `agent plugins deny <name>` | 撤销授权（保留 `grant` 键 → `disabled`） | `--config` |
 | `agent plugins keygen` | 生成 Ed25519 密钥对 | `--key-id`、`--private-key`（不覆盖已存在文件） |
 | `agent plugins sign <dir>` | 对包目录的 `plugin.json` 签名 | `--private-key` |
@@ -716,6 +759,8 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 | `load_failed` | 包在但加载不了（坏 wasm、坏签名、缺文件） | ❌ 再取回读到的是同样的坏字节 |
 
 ### 7.3 GUI
+
+**扩展点在同意流里逐项勾选，且默认全不勾选**：能力是只读清单（声明不是菜单），主机 / 路径默认全选可缩小，扩展点相反——它不是缩小一次既有授权，而是新增一份宿主本来不给的权力，其中 `decide` 能否决 agent 的工具调用。每一项下面写明授出去的到底是什么。CLI 的 `--extensions` 不写就是不授，界面不能是同一个问题的第二个更松的答案。
 
 设置 → 插件：每行一条 entry，未解析的行给次要样式的「取回声明」，「授权」在声明可见之前一直禁用——**不能对看不见的清单点同意**。取回成功后常驻「已取回并缓存该插件包（未授权，可随时撤销）」，并把授权对话框切换到刚取回的声明。取回 / 授权 / 收敛进行中，Esc、标题栏 X、点背景、切 tab 四条路径全部被拦——一个按下去必然无效的取消按钮就是在骗人。
 
@@ -785,6 +830,8 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | `cross-check manifest: … missing` | op 0 的 `provides` 没覆盖部署声称的工具 |
 | `cross-check manifest: the deployment grants … extension` | 授权了扩展点，但 guest 的 op 0 自述里没有它——插件没注册观察者（或用的是不带 `observe` 的旧构建）。要么重新构建，要么把它从这条 entry 的 `grant.extensions` 里去掉 |
 | `grant --extensions` 被拒，说插件没声明 | `plugin.json` 的 `extensions` 里没有它。授一个插件没要过的扩展点是配置写错了，不是慷慨 |
+| 工具调用批量被拒，错误里点着某个插件 | 那个插件的决策点在拒。看它是**主动拒**（reason 是插件自己的话）还是**答不出来**（reason 里有 timeout/trap/decode，且有 `plugin/call_failed{operation=decide:*}`）。后者是 fail-closed 生效：坏插件会在连续故障到阈值后被自动卸载，也可以直接 `agent plugins deny <name>` 立刻停掉 |
+| 授权了 `decide` 但插件没实现 | 与 observe 同：激活期拒绝，`detail` 点名扩展点 |
 | 授权了 `observe`，观察者却从没被调用 | 先确认这一条真的 `loaded`；再确认这次调用**跑起来了**——被权限/策略/护栏拒掉的调用从不通知观察者（§3.4）。另外插件自身的 `plugin/call_failed`（`operation` 是 `observe:<tool>`）说明它被调过但失败了 |
 | `guest exports no linear memory` | 没导出 `memory`（构建目标不对，或不是 cdylib） |
 | 装完了跑不起来 | 正常：`install` 不授权，去 `grant` |
