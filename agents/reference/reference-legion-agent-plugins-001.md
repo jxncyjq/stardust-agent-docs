@@ -487,8 +487,34 @@ agent plugins sign <包目录> --private-key <file>          # 写出 plugin.sig
 `keyring.json`（部署侧的信任集，由 `plugins.keyring` 指向）：
 
 ```json
-{ "keys": [ { "id": "demo-key", "algorithm": "ed25519", "public_key": "<base64>" } ] }
+{
+  "keys": [
+    { "id": "demo-key", "algorithm": "ed25519", "public_key": "<base64>" },
+    { "id": "ops-2026", "algorithm": "ed25519", "public_key": "<base64>" }
+  ],
+  "revoked": [
+    { "key_id": "demo-key", "revoked_at": "2026-08-29T10:00:00Z", "reason": "laptop stolen" }
+  ]
+}
 ```
+
+#### 吊销：作废一把泄漏的私钥
+
+`revoked` 是可选的。`key_id` 必填，`revoked_at`（RFC 3339）与 `reason` 可选、只用于把拒绝说清楚。四条语义：
+
+- **吊销压过 `keys`。** 被吊销的钥匙即使公钥还留着也验不过。**保留公钥是刻意的**：它让错误能说「这把钥匙被吊销于 2026-08-29（laptop stolen）」，而不是含混的「未知的 key id」。
+- **可以吊销一把已经从 `keys` 里删掉的钥匙**：那条记录正是让旧包的失败解释得清的东西。
+- **同一个 id 吊销两次 → 拒绝解析**：哪条算数、拒绝时引用哪个时间戳，没有答案就不猜。
+- **所有 key 都被吊销 → 拒绝解析**：那是空信任集，配上强制验签等于拒绝一切插件，在解析期说出来比在每次挂载时说好。
+
+被吊销钥匙签的包**就是不可信的包**：HTTP 侧 422、界面不给重试（重试一万次那把钥匙还是被吊销的）、并且**会被自动清出缓存**。
+
+**吊销什么时候生效——这条必须记住：不是即时。** 信任集在 `agent serve` 装配时冻结，运行中换不了。改完 `keyring.json` 之后：
+
+- `agent plugins reload` 会**拒绝**收敛，并说明本进程仍在按旧信任集运行、需要重启 serve；
+- **重启 serve 之后**吊销才生效：那把钥匙签的插件在收敛时验签失败、状态变 `failed` 并点名，缓存里的那份包同时被清掉。
+
+拒绝而不是照做，正是这条守卫的价值：否则运维会以为改完就算数，而进程里那把钥匙还在验包。
 
 **验签失败的四条路径里只有三条算「不可信」**：签名缺失、签名文件不可解析、验不过——这三条 `errors.Is(err, manifest.ErrUntrustedPackage)` 为真，界面上不给重试。第四条（读 `plugin.sig` 时的 I/O 错误）**刻意不算**：磁盘故障是可重试的环境问题，混进信任信号会让真正的安全事件贬值。
 
@@ -680,7 +706,7 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 
 卸载时若等不到在途调用收敛（`drain` 超时），发 `plugin/unload_leaked`，带**在途数**与实际等待时长——「还有 3 个调用在里面」和「还有 1 个」的处置完全不同。
 
-`reload` 有一条要记住的限制：**信任集在 serve 装配时冻结**，运行中换不了。收紧了 keyring 再 `reload`，得到的是**新清单 + 旧信任集**；策略变更必须重启 serve。
+`reload` 有一条要记住的限制：**信任集在 serve 装配时冻结**，运行中换不了。收紧了 keyring 再 `reload`，得到的会是**新清单 + 旧信任集**——所以 `reload` 干脆**拒绝**：它比对配置里的签名策略（是否强制、可信 key id、**已吊销 key id**）与本进程正在跑的那一套，不等就报错并要求重启 serve。加一条吊销同样触发这条守卫，见 §5.2。
 
 <!-- @section: troubleshooting -->
 ## 九、排错
@@ -704,6 +730,8 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | `parse plugin manifest …: config_schema …` | 插件自己的 `config_schema` 写得不对（用了不支持的关键字、`required` 里的名字没声明、嵌套超过 5 层），是**插件作者**要修的 |
 | `detail` 里出现 `health: N consecutive faults` | 插件连续失败到阈值被**自动卸载**；看 `category` 判断是 timeout/trap/abi，修好包后 `reload` |
 | 出现 `plugin/unload_leaked` 事件 | 卸载时仍有在途调用没收敛完；事件里的 `inflight` 是留下的调用数 |
+| `signed by a revoked key` | 那把签名钥匙已被 `keyring.json` 的 `revoked` 作废。重试没用，重新用有效钥匙签包（或换回来）；那份包会被自动清出缓存 |
+| `reload` 报「策略不同 / restart」 | 配置里的签名策略（含吊销）与本进程正在跑的不一致。信任集在 serve 启动时冻结，**重启 serve** 才会应用 |
 | 422 之后那条变回「未缓存」 | 正常：验签失败的包会被**立即移出缓存**（那份字节不可信，不该留在部署会读的目录里）。再点「取回声明」会重新下载并再次 422——修包或换签名密钥才是出路 |
 | 缓存越来越大 | `agent plugins cache list` 看占用与引用关系；`prune` 清掉清单不再引用的；`prune --max-bytes N` 把总量压到 N 以下（**只动未引用的**，压不下去会如实报告差多少） |
 | 缓存里有 `INCOMPLETE` 条目 | 上一次解包被打断留下的半份目录。它既不算命中也占磁盘，`prune` 不动它（它可能属于正在进行的下载），用 `cache remove <digest>` 点名清除 |
