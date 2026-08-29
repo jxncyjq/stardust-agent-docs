@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.4.0"
+version: "1.5.0"
 created: "2026-08-28"
 updated: "2026-08-29"
 author: "jxncyjq"
@@ -350,7 +350,7 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 | 0 | `abi.OpManifest` | 忽略 | 自述 JSON：`{"name":…,"version":…,"provides":[工具名…],"extensions":[扩展点名…]}` |
 | 1 | `abi.OpCallTool` | `{"call_id":…,"tool":…,"arguments":{…}}` | `domain.ToolResult`：`{"call_id":…,"success":bool,"output":…}` 或 `{"success":false,"error":…}` |
 | 2 | `abi.OpObserveToolResult` | `{"call_id":…,"tool":…,"arguments":{…},"success":bool,"output":…,"error":…}` | **被丢弃**。返回一个格式正确的小文档即可（SDK 返回 `{}`）。见 §3.4 |
-| 3 | `abi.OpDecideToolCall` | `{"call_id":…,"tool":…,"arguments":{…}}`（还没跑，所以没有结果） | `{"decision":"allow"\|"deny","reason":…}`。**答不出来 = 拒绝**，见 §3.4 |
+| 3 | `abi.OpDecideToolCall` | `{"call_id":…,"tool":…,"arguments":{…}}`（还没跑，所以没有结果） | `{"decision":"allow"\|"deny"\|"ask","reason":…}`。**答不出来 = 拒绝**，见 §3.4 |
 | 其它 | — | — | **不要 trap**，返回一个可读的小 JSON 错误体 |
 
 **交叉校验**：激活时宿主拿 op 0 的自述与部署侧的说法对两次——`provides` 少一个部署声称的工具就拒绝挂载；`extensions` 少一个部署**授权**了的扩展点也拒绝挂载（见 §3.4）。工具失败要用 `{"success":false,"error":…}` 表达，不要 trap——trap 会让整个模块死掉。
@@ -392,7 +392,7 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 | 扩展点 | 时机 | 能改什么 |
 |---|---|---|
 | `observe` | 一次工具调用**答完之后** | 什么也改不了 |
-| `decide` | 一次工具调用**派发之前** | 只能**否决**（收紧），永远不能放宽 |
+| `decide` | 一次工具调用**派发之前** | 只能**收紧**：否决，或要求人工审批 |
 
 `observe` 的边界，逐条都是刻意的：
 
@@ -405,14 +405,25 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 
 #### `decide`：只能收紧的决策点
 
-宿主在派发任何工具之前问一遍已授权的插件，回答 `allow` 或 `deny`。
+宿主在派发任何工具之前问一遍已授权的插件，回答 `allow` / `deny` / `ask`。
 
 - **只能收紧。** 征询发生在宿主自己的 enforcer 与 policy **之后**：宿主已经拒掉的调用根本不会给插件看，所以没有任何位置能把拒绝改成放行。插件回 `allow` 只是「我不反对」，不是授权。
-- **取最严，与顺序无关。** 多个插件里任何一个 deny 即拒。命中拒绝就短路——省下的是调用方的预算——代价是错误里只点名第一个反对者。
+- **取最严，与顺序无关**（`deny` > `ask` > `allow`）。多个插件里任何一个 deny 即拒；一个插件的 ask 不会被另一个插件的 allow 冲淡。命中拒绝就短路——省下的是调用方的预算——代价是错误里只点名第一个反对者。
 - **fail-closed：答不出来就是拒绝。** 超时、trap、空体、坏 JSON、未知字段、尾随数据、这个 ABI 不认识的 decision 词，全部拒绝该次调用并计入插件健康度。反过来（fail-open）会让「安全控制」变成「把插件搞崩就能关掉的安全控制」。
 - **停摆是有界的。** 一个坏插件确实能拒掉若干次调用，但连续故障到阈值后 G1 会**自动卸载**它，之后没有人再拒绝任何东西。运维遇到批量拒绝时该看的是 `plugin/call_failed`（`operation` 形如 `decide:<tool>`）与该插件的健康度，而不是等。
 - **预算 = `min(工具超时/4, 200ms)`。** 征询跑在调用方的 goroutine 上，工具还没开始：声明 300ms 超时的工具不该把其中 200ms 花在被问「能不能跑」上。
 - 拒绝会以 `ErrPermissionDenied` 的形式返回，错误文本点名**是哪个插件**、**理由是什么**——一个无法归因的拒绝是运维修不了的拒绝。
+
+
+##### `ask`：要求人工审批
+
+`ask` 不是拒绝，也不是插件自己控制的等待：宿主在**这一轮的边界**挂起该任务（落 checkpoint、结束本次 run），开一张点名**这个插件**与这条理由的审批票，人批了之后任务从检查点继续。
+
+- **同一条队列。** 和宿主自己的 Sensitive 审批共用一套票据、一个 `/v1/approvals`、一个 SSE 事件、一条恢复路径。票上多两个字段：`requested_by`（`host:sensitive` 或 `plugin:<name>`）与 `reason`（插件自己的话）。
+- **不看模式。** 宿主的 Sensitive 审批只在 Manual 模式生效，插件的 ask **在 Auto 模式下同样挂起**。装了守门插件的部署，其意图正是「这几类调用要人看一眼」，按模式忽略它等于把 ask 静默降级成 allow。**代价要认**：一个无人值守的 Auto 任务会停下来等人。
+- **没有审批通道 = 拒绝。** 部署里没有接审批设施时，ask 按拒绝处理——没人可问的问题不会自己变成「同意」。
+- **派发时还会再问一次。** 决策者在一轮里被问两次：round 边界问「要不要人看」，派发时问「现在能不能跑」。第二次是 fail-closed 的兜底——那时必须已经有一张**批准过**的票，否则拒。因此**决策者必须无副作用**。
+- **绕过 runtime 的调用拿不到放行。** 插件自己的 `call_tool`、CLI 直接跑的工具，没有任务上下文也就没有票，ask 在那里一律是拒绝。这不是缺陷：那些路径本来就没有人在旁边看着。
 
 Rust：
 
@@ -428,6 +439,9 @@ fn decide_call(request: &ToolDecisionRequest) -> ToolDecision {
     if request.tool == "write_file" && frozen() {
         return ToolDecision::deny("writes are frozen during the incident");
     }
+    if request.tool == "deploy" {
+        return ToolDecision::ask("deploys are reviewed by a human");
+    }
     ToolDecision::allow()
 }
 ```
@@ -438,6 +452,9 @@ Go：
 legionplugin.Decide(func(req legionplugin.ToolDecisionRequest) legionplugin.ToolDecision {
 	if req.Tool == "write_file" && frozen() {
 		return legionplugin.Deny("writes are frozen during the incident")
+	}
+	if req.Tool == "deploy" {
+		return legionplugin.Ask("deploys are reviewed by a human")
 	}
 	return legionplugin.Allow()
 })
@@ -830,6 +847,8 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | `cross-check manifest: … missing` | op 0 的 `provides` 没覆盖部署声称的工具 |
 | `cross-check manifest: the deployment grants … extension` | 授权了扩展点，但 guest 的 op 0 自述里没有它——插件没注册观察者（或用的是不带 `observe` 的旧构建）。要么重新构建，要么把它从这条 entry 的 `grant.extensions` 里去掉 |
 | `grant --extensions` 被拒，说插件没声明 | `plugin.json` 的 `extensions` 里没有它。授一个插件没要过的扩展点是配置写错了，不是慷慨 |
+| 任务停在「等待审批」，票上写着某个插件 | 那个插件答了 `ask`。在 GUI 的审批卡片（或 `GET /v1/approvals`）里能看到 `requested_by` 与 `reason`；批准后任务从检查点继续。**Auto 模式也会这样停**——那是 `ask` 的语义，不是 bug |
+| 人已经批了，调用还是被拒 | 派发时那次兜底没找到批准的票。两种常见原因：①这次调用没有任务上下文（插件自己的 `call_tool`、CLI 直接跑），那里本来就没人看着；②lazy 协议下票开在了外层 meta 调用上——票必须按**内层**调用开，这是宿主内部的一致性，遇到请报 bug |
 | 工具调用批量被拒，错误里点着某个插件 | 那个插件的决策点在拒。看它是**主动拒**（reason 是插件自己的话）还是**答不出来**（reason 里有 timeout/trap/decode，且有 `plugin/call_failed{operation=decide:*}`）。后者是 fail-closed 生效：坏插件会在连续故障到阈值后被自动卸载，也可以直接 `agent plugins deny <name>` 立刻停掉 |
 | 授权了 `decide` 但插件没实现 | 与 observe 同：激活期拒绝，`detail` 点名扩展点 |
 | 授权了 `observe`，观察者却从没被调用 | 先确认这一条真的 `loaded`；再确认这次调用**跑起来了**——被权限/策略/护栏拒掉的调用从不通知观察者（§3.4）。另外插件自身的 `plugin/call_failed`（`operation` 是 `observe:<tool>`）说明它被调过但失败了 |
