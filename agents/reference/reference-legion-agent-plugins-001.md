@@ -5,7 +5,7 @@ aliases: ["插件手册", "plugin manual", "agent plugins", "WASM 插件", "插�
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "plugin", "wasm", "wazero", "abi", "signing", "capability", "cli"]
-version: "1.6.0"
+version: "1.7.0"
 created: "2026-08-28"
 updated: "2026-08-29"
 author: "jxncyjq"
@@ -881,6 +881,28 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 
 `reload` 有一条要记住的限制：**信任集在 serve 装配时冻结**，运行中换不了。收紧了 keyring 再 `reload`，得到的会是**新清单 + 旧信任集**——所以 `reload` 干脆**拒绝**：它比对配置里的签名策略（是否强制、可信 key id、**已吊销 key id**）与本进程正在跑的那一套，不等就报错并要求重启 serve。加一条吊销同样触发这条守卫，见 §5.2。
 
+
+<!-- @section: reachability -->
+## 八点五、插件的工具是怎么到达模型的
+
+一句话：**每个任务的工具注册表继承插件注册表**。
+
+```
+per-agent 注册表（policy / 权限 / 护栏 / 审计都是自己的）
+        └── parent: 插件注册表（插件的工具 + observe/decide seam）
+```
+
+四条由此而来的事实：
+
+- **能看见也能调用。** 插件的工具进目录（模型看得见）也进派发路径（调得动）。
+- **在本 agent 的规矩下跑。** 继承的是**解析**，不是策略：插件的工具受本任务的执行策略、护栏与审计约束，不会把插件注册表的规矩带过来。声明 `risk_level: high/critical` 的插件工具照样被执行策略拒掉——和内置工具一个待遇。
+- **`reload` 立刻生效。** 这条链接是**引用**不是快照：新挂的插件对已经存在的任务注册表也可见，卸载后立刻消失。
+- **同名时内置赢。** 任务注册表自己注册的名字遮蔽继承来的同名工具——反过来会让一个插件悄悄替换 `write_file`。
+
+权限方面：角色白名单是编译期的，而插件的工具名运行期才有，所以权限判定多了一个**动态来源**（「这个名字是不是插件贡献的」）。它不是绕过：排在 per-agent 覆盖之后、与白名单同一条路径，`disabled_tools` 照样能禁掉一个插件工具（插件工具在 gateable 目录里，这是从一开始就立下的规矩）。
+
+**扩展点也因此才真的生效**：`observe` / `decide`（含 `ask`）挂在插件注册表上，而通知与征询本来就沿 parent 链走——所以插件现在看得见、也拦得住 **agent 自己的**工具调用，不只是插件通过 `call_tool` 发起的那些。
+
 <!-- @section: troubleshooting -->
 ## 九、排错
 
@@ -904,6 +926,8 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | 授权了 `observe`，观察者却从没被调用 | 先确认这一条真的 `loaded`；再确认这次调用**跑起来了**——被权限/策略/护栏拒掉的调用从不通知观察者（§3.4）。另外插件自身的 `plugin/call_failed`（`operation` 是 `observe:<tool>`）说明它被调过但失败了 |
 | `guest exports no linear memory` | 没导出 `memory`（构建目标不对，或不是 cdylib） |
 | 装完了跑不起来 | 正常：`install` 不授权，去 `grant` |
+| 模型看不到插件的工具 | 先确认这条 entry 是 `loaded`；再确认它没被该 agent 的 `disabled_tools` 禁掉。插件工具经**继承**到达每个任务的注册表（§八点五），所以 `loaded` 之后不需要重启 serve |
+| 插件工具被拒，错误是 permission denied | 两种：①该工具声明了 `risk_level: high/critical`，执行策略拒了它（与内置工具同一条规则）；②它被 `disabled_tools` 禁了 |
 | `grant` 报缓存未命中且没配 cache | `plugins.cache` 缺失，远程包无处落盘 |
 | HTTP 调用返回 `DENIED` | 目标主机不在 `allowed_hosts`，或重定向跳出了白名单 |
 | 响应/文件内容被截断 | 命中 1 MiB 上限，看 `truncated` 字段 |
