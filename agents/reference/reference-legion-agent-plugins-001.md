@@ -404,8 +404,55 @@ Go 侧还有一件 Rust 没有的事：`plugin_alloc` 返回后宿主手上只�
 | `tools[].timeout_ms` | int | 必须 > 0 |
 | `tools[].description` / `input_schema` / `risk_level` / `sensitive` | — | 呈现给模型的元信息 |
 | `requires` | []string | 本插件通过 `call_tool` 调用的**别的插件的工具名**；不得为空串、不得重复、不得写自己贡献的工具 |
+| `config_schema` | object | **可选**。声明本插件期望的部署侧配置形状（JSON Schema 的一个子集，见 §4.1）。声明了就会在**加载期**校验 `plugins.json` 的 `config`，不合则该条 `failed` 且 `detail` 点名字段；不声明则配置原文直传给 guest，与既有行为一致 |
 
 `requires` 与 `capabilities` 不同类：能力在加载期检查，缺了直接拒载；`requires` 未满足（提供方不在）是**可恢复的 suspended 态**，提供方回来即可恢复。
+
+### 4.1 `config_schema`：够用的子集
+
+部署方在 `plugins.json` 的 `config` 里写的东西，宿主原本一个字都不校验——写错一个键名或给错类型，要等到运行时在 guest 里炸，而那是整条链路上报错能力最弱的一层。声明 `config_schema` 就把这件事挪到加载期，并且**点名是哪个字段错在哪**：
+
+```
+plugin "legion-jira": config.auth.token: missing required field "token"
+plugin "legion-jira": config.hosts[1]: want a string, got a number
+plugin "legion-jira": config.retries: want an integer, got 1.5
+```
+
+支持的关键字**只有这七个**，其余（`$ref`、`allOf`、`patternProperties`…）在**解析插件包时**就被按名字拒绝——忽略不认识的关键字会让作者以为自己的约束生效了：
+
+| 关键字 | 可出现在 | 语义 |
+|---|---|---|
+| `type` | 根与每个属性 | `object` / `string` / `number` / `integer` / `boolean` / `array` |
+| `properties` | `type: object` | 字段名 → 子 schema |
+| `required` | `type: object` | 必填字段名，**每个都必须在 `properties` 里** |
+| `additional_properties` | `type: object` | **缺省 `false`**：未声明的字段是错误 |
+| `items` | `type: array` | 元素的子 schema |
+| `enum` | 标量 | 允许的取值 |
+| `description` | 任意 | 只给人看 |
+
+例子：
+
+```json
+"config_schema": {
+  "type": "object",
+  "properties": {
+    "endpoint": { "type": "string", "description": "Jira base URL" },
+    "retries":  { "type": "integer" },
+    "mode":     { "type": "string", "enum": ["fast", "safe"] },
+    "hosts":    { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["endpoint"]
+}
+```
+
+四条要知道的规则：
+
+- **`additional_properties` 缺省 false**：一个写错的键名如果被悄悄忽略，看起来和「这个设置没生效」一模一样，运维没有任何线索。要放开就显式写 `true`。
+- **嵌套深度上限 5**：校验器是递归的，而它读的文档是随不可信插件一起来的。
+- **`integer` 与 `number` 是分开的**：`retries: 1.5` 会被拒绝。
+- **不写 `config` 等于写了 `{}`**：整段省略不能绕过 `required`。
+
+不做的事：schema 的默认值填充（那会让 `config_get` 拿到的东西与 `plugins.json` 里写的不一致）、跨版本 schema 迁移、完整 JSON Schema（要引第三方依赖，而这条路上的每个字节都跟着不可信插件进部署）。
 
 <!-- @section: packaging -->
 ## 五、打包、签名与发布
@@ -630,6 +677,8 @@ health: 5 consecutive faults (last: category=trap tool=demo_echo: invoke op=1: g
 | 响应/文件内容被截断 | 命中 1 MiB 上限，看 `truncated` 字段 |
 | `plugins reload` 说没有 loader | 在 CLI 进程里跑的；loader 属于 `agent serve` 那个进程 |
 | 状态一直 `pending` | 收敛没跑：还在等任务边界，或另一个 apply 正在进行 |
+| `detail` 里出现 `config-schema` | `plugins.json` 的 `config` 与插件 `config_schema` 声明的形状不符；错误里有字段路径（`config.auth.token` 这种） |
+| `parse plugin manifest …: config_schema …` | 插件自己的 `config_schema` 写得不对（用了不支持的关键字、`required` 里的名字没声明、嵌套超过 5 层），是**插件作者**要修的 |
 | `detail` 里出现 `health: N consecutive faults` | 插件连续失败到阈值被**自动卸载**；看 `category` 判断是 timeout/trap/abi，修好包后 `reload` |
 | 出现 `plugin/unload_leaked` 事件 | 卸载时仍有在途调用没收敛完；事件里的 `inflight` 是留下的调用数 |
 | 422 之后那条一直是 `load_failed` | 不可信的包留在缓存里了；仓内暂无 eviction API，需手工清 `cache/sha256/<digest>` |
