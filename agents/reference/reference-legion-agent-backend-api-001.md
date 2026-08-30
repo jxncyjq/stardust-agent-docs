@@ -5,9 +5,9 @@ aliases: ["后端 API", "系统调用", "legionAgent HTTP 端点", "agent serve 
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "backend", "http", "api", "sse", "task", "session"]
-version: "1.0.0"
+version: "1.1.0"
 created: "2026-08-27"
-updated: "2026-08-27"
+updated: "2026-08-30"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -144,6 +144,22 @@ related_docs:
 | POST | `/v1/browser/sessions/{id}/takeover` | 是 | — | body `{"enabled":true}` / `{"enabled":false}`，置/清人工接管标志 |
 | POST | `/v1/browser/sessions/{id}/viewport` | 是 | — | body `{"width":1280,"height":800}`，设视口消除 letterbox |
 | POST | `/v1/browser/sessions/{id}/input` | 是 | — | body `{"events":[...]}`，注入归一化输入事件 |
+
+**输入事件的修饰键**：每条事件用可选的 `modifiers` 带上按住的修饰键，取值 `ctrl` / `shift` / `alt` / `meta`：
+
+```json
+{"events":[
+  {"type":"keydown","key":"c","modifiers":["ctrl"]},
+  {"type":"keyup","key":"c","modifiers":["ctrl"]},
+  {"type":"click","x":0.5,"y":0.5,"modifiers":["ctrl"]}
+]}
+```
+
+三条规则，都会被硬校验（整批拒，不静默跳过单条）：
+
+- **修饰键随事件走，不是一次按下、一次松开**。后端在注入这条事件前按下、注入后（含出错路径）释放，所以一次失败的注入不会把浏览器留在 Ctrl 按住的状态里。相应地，`{"type":"keydown","key":"Control"}` 这种**把修饰键当键发**的写法被拒绝，错误里指明该放进 `modifiers`。
+- **`char` 事件只接受 `shift`**。`char` 是文本插入（InsertText），任何修饰键都改不了插入的内容；收下 `ctrl` 就等于把一次「复制」悄悄变成「输入一个字母 c」。快捷键请发 `keydown`/`keyup`。`shift` 是例外，因为移位后的字符已经在 `text` 里。
+- **未知修饰键名报错**，不猜（`cmd`、`ctrlKey` 都会被拒）。
 
 > 契约缺口（当前状态，非笔误）：`/openapi.json` **未收录** 4 个 `/v1/browser/...` 端点与 `/v1/tasks/{id}/interrupt`。按 OpenAPI 生成的客户端拿不到这些路由，需手写调用。
 
