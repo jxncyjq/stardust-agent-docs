@@ -5,7 +5,7 @@ aliases: ["后端 API", "系统调用", "legionAgent HTTP 端点", "agent serve 
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "backend", "http", "api", "sse", "task", "session"]
-version: "1.2.0"
+version: "1.3.0"
 created: "2026-08-27"
 updated: "2026-08-30"
 author: "jxncyjq"
@@ -143,7 +143,11 @@ related_docs:
 | GET | `/v1/browser/sessions/{id}/stream` | 是 | — | 浏览器会话 SSE（screencast 帧 + status），支持 `Last-Event-ID` 补发 status |
 | POST | `/v1/browser/sessions/{id}/takeover` | 是 | — | body `{"enabled":true}` / `{"enabled":false}`，置/清人工接管标志 |
 | POST | `/v1/browser/sessions/{id}/viewport` | 是 | — | body `{"width":1280,"height":800}`，设视口消除 letterbox |
+| POST | `/v1/auth/rotate` | 是 | — | 作废当前 bearer token 并返回新的；**用来轮换的那个 token 自身也失效**。挂着的 SSE 会先收到 `event: reauth` 再断开。无 token 的本机部署回 409 |
 | POST | `/v1/browser/sessions/{id}/input` | 是 | — | body `{"events":[...]}`，注入归一化输入事件 |
+| GET | `/v1/browser/sessions` | 是 | — | 列出浏览器会话；`?chat_session_id=` 按对话过滤。界面的标签条据它渲染 |
+| GET | `/v1/browser/sessions/{id}/info` | 是 | — | 该会话现在在哪、谁在开车、页面还在不在（`has_page=false` 是 TTL 回收后的懒态，不是断线） |
+| POST | `/v1/browser/sessions/{id}/navigate` | 是 | — | 人工导航：body `{"url":"..."}` 或 `{"action":"back\|forward\|reload"}`（二选一）。**只在接管中允许**，否则 409；URL 走与 Agent 相同的策略——接管不是提权 |
 
 **输入事件的修饰键**：每条事件用可选的 `modifiers` 带上按住的修饰键，取值 `ctrl` / `shift` / `alt` / `meta`：
 
@@ -174,7 +178,7 @@ related_docs:
 | `ELEMENT_NOT_FOUND` | 409 | ref 失效（页面变了），重新 read 再来 |
 | 无语义码 | 500 | 服务端接线缺口，不是调用方的错 |
 
-> 契约缺口（当前状态，非笔误）：`/openapi.json` **未收录** 4 个 `/v1/browser/...` 端点与 `/v1/tasks/{id}/interrupt`。按 OpenAPI 生成的客户端拿不到这些路由，需手写调用。
+> 上述端点连同 `/v1/tasks/{id}/interrupt` 与 `POST /v1/auth/rotate` 现已全部收录进 `/openapi.json`，并有一条测试从路由表反查契约——新加端点忘了写进去会直接让 CI 红。
 
 <!-- @end-section -->
 

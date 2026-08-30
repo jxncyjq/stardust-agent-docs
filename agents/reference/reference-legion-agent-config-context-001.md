@@ -5,9 +5,9 @@ aliases: ["agent.json", "上下文文件", "AGENTS SOUL TOOLS USER MEMORY"]
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "configuration", "context-files", "maas", "persona"]
-version: "2.0.0"
+version: "2.1.0"
 created: "2026-05-19"
-updated: "2026-08-27"
+updated: "2026-08-30"
 author: "jxncyjq"
 status: "published"
 parent: "reference-legion-agent-user-manual-001"
@@ -200,6 +200,12 @@ API key 不要写进可提交的配置文件；用环境变量或未提交的本
 
 - `web.searxng_url` 为空时 `web_search` **根本不注册**，模型看不到这个工具。
 - `browser.enabled=false` 是默认；开启需要环境里有可用 Chromium，`bin_path` 可指向系统 Chrome/Edge 绕过自动下载。
+- **Linux 上还必须装 `bubblewrap`**：浏览器进程一律跑在 bwrap 的外层沙箱里，缺了它 `browser_open` 直接失败（错误里带安装命令）。Ubuntu 24.04 及以后还默认禁用未特权 user namespace，需要 `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` 或为本进程配 AppArmor profile。这是**刻意不做回退**的：一个以为自己被沙箱包着、实际没有的部署，比一个起不来的部署危险得多。
+- `browser.allow_private_hosts=false` 是默认，此时内置浏览器**打不开回环与私网**（`127.0.0.1`、`10.x`、`169.254.169.254` 云元数据……）。只有需要 Agent 访问**你自己的**内网服务时才打开；打开后启动会记一条 WARN。它只放宽「哪些地址可以连」——出口代理仍在路径上，仍然解析一次、校验那一次、拨号到刚校验过的那个 IP（防 DNS rebinding）。
+- `browser.require_sandbox=true` 表示没有外层隔离就不启动浏览器。Linux 无需设置（那里本来就强制 bwrap）；macOS/Windows 目前**没有**外层沙箱实现，设为 true 等于在那两个平台上关掉浏览器功能。
+- `browser.max_processes`（默认 1）/ `max_contexts_per_process`（默认 8）：进程池的两个上限。同一进程里的会话共命运——一个页面把渲染进程搞崩或吃光内存，同进程的别的会话一起完蛋；调大 `max_processes` 是用内存换隔离。两个上限都满时，新会话被拒（`RESOURCE_EXHAUSTED`），不会继续塞。
+- `browser.process_memory_limit_mb`（默认 0=不做）：超过它的**空闲**浏览器进程会被换掉。只换空闲的——回收一个正在被人看着的浏览器，用户看到的是页面凭空消失、接管中断、登录态没了。
+- `browser.min_free_memory_mb`（默认 0=不做）：可用物理内存低于它时拒绝**新建**浏览器会话（已开着的不受影响）。读不到内存时不拦，但记 WARN。
 - `browser.snapshot_rune_threshold` 为 0 时关闭观测降级；非 0 时超阈值的页面文本会落盘（去重）并做任务导向抽取，模型再用 `read_file` 翻页。
 - `plugins.manifest` 为空 = 这套部署不跑插件（契约声明的可选项）；配了路径但读不了/解析不了，`serve` 直接启动失败。相对路径按**进程工作目录**解析，不是配置文件所在目录。
 
