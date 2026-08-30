@@ -5,7 +5,7 @@ aliases: ["后端 API", "系统调用", "legionAgent HTTP 端点", "agent serve 
 type: "reference"
 category: "agents/reference"
 tags: ["agent", "backend", "http", "api", "sse", "task", "session"]
-version: "1.1.0"
+version: "1.2.0"
 created: "2026-08-27"
 updated: "2026-08-30"
 author: "jxncyjq"
@@ -160,6 +160,19 @@ related_docs:
 - **修饰键随事件走，不是一次按下、一次松开**。后端在注入这条事件前按下、注入后（含出错路径）释放，所以一次失败的注入不会把浏览器留在 Ctrl 按住的状态里。相应地，`{"type":"keydown","key":"Control"}` 这种**把修饰键当键发**的写法被拒绝，错误里指明该放进 `modifiers`。
 - **`char` 事件只接受 `shift`**。`char` 是文本插入（InsertText），任何修饰键都改不了插入的内容；收下 `ctrl` 就等于把一次「复制」悄悄变成「输入一个字母 c」。快捷键请发 `keydown`/`keyup`。`shift` 是例外，因为移位后的字符已经在 `text` 里。
 - **未知修饰键名报错**，不猜（`cmd`、`ctrlKey` 都会被拒）。
+
+**错误码与状态码**：这三个端点的 HTTP 状态由响应体里的**语义码**推出，同一个条件在三处给同一个答案。
+
+| 语义码 | 状态 | 意思 / 该怎么办 |
+|--------|------|-----------------|
+| `INVALID_INPUT` | 400 | 请求本身写错了（空批次、越界坐标、认不出的键名、越界视口）。**重试同一个请求永远不会成功**，改请求才会 |
+| `PROTOCOL_BLOCKED` / `PRIVATE_HOST_BLOCKED` | 403 | 部署拒绝这个目标（危险协议、私网地址），换目标 |
+| `SESSION_NOT_FOUND` | 404 | 没有这个会话 id（从未存在或已删）。三个端点一致 |
+| `CONTEXT_EVICTED` | 409 | 会话在，但它的浏览器上下文/活跃页没了。重建会话后同样的请求可用 |
+| `TAKEOVER_REQUIRED` | 409 | 会话**没有**在接管，先 `POST .../takeover {"enabled":true}` |
+| `SESSION_UNDER_TAKEOVER` | 409 | 相反的方向：会话正被人接管，Agent 的写动作被挡下 |
+| `ELEMENT_NOT_FOUND` | 409 | ref 失效（页面变了），重新 read 再来 |
+| 无语义码 | 500 | 服务端接线缺口，不是调用方的错 |
 
 > 契约缺口（当前状态，非笔误）：`/openapi.json` **未收录** 4 个 `/v1/browser/...` 端点与 `/v1/tasks/{id}/interrupt`。按 OpenAPI 生成的客户端拿不到这些路由，需手写调用。
 
